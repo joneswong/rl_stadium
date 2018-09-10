@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import threading
 import six.moves as cpt
+import json
 import numpy as np
 import tensorflow as tf
 import gym
@@ -24,119 +25,58 @@ tf.flags.DEFINE_string("tables", "", "tables names")
 tf.flags.DEFINE_string("outputs", "", "output tables names")
 tf.flags.DEFINE_string("checkpointDir", "", "oss buckets for saving checkpoint")
 tf.flags.DEFINE_string("buckets", "", "oss buckets")
-# trial specifications
-tf.flags.DEFINE_string("env", "pendulum", "environment name, e.g., pendulum, prosthetics, etc.")
-tf.flags.DEFINE_integer("seed", 666, "tf seed")
-tf.flags.DEFINE_integer("traj_len", 32, "trajectory length")
-tf.flags.DEFINE_integer("producer_replica", 8, "number of threads for producing")
-tf.flags.DEFINE_integer("replay_replica", 4, "number of threads for replaying")
+# user defined
+tf.flags.DEFINE_string("config", "", "path of config file")
 
-AGENT_CONFIG = {
-    # === Setting ===
-    "gamma": 0.99,
-    "horizon": None,
-    # === Model ===
-    # general model
-    "model": {"fcnet_hiddens": []},
-    # Hidden layer sizes of the policy network
-    "actor_hiddens": [64, 64],
-    # Hidden layers activation of the policy network
-    "actor_hidden_activation": "relu",
-    # Hidden layer sizes of the critic network
-    "critic_hiddens": [64, 64],
-    # Hidden layers activation of the critic network
-    "critic_hidden_activation": "relu",
-    # N-step Q learning
-    "n_step": 1,
 
-    # === Exploration ===
-    # Max num timesteps for annealing schedules. Exploration is annealed from
-    # 1.0 to exploration_fraction over this number of timesteps scaled by
-    # exploration_fraction
-    "schedule_max_timesteps": 2000000,
-    # Number of env steps to optimize for before returning
-    "timesteps_per_iteration": 1000,
-    # Fraction of entire training period over which the exploration rate is
-    # annealed
-    "exploration_fraction": 0.1,
-    # Final value of random action probability
-    "exploration_final_eps": 0.02,
-    # OU-noise scale
-    "noise_scale": 0.1,
-    # theta
-    "exploration_theta": 0.15,
-    # sigma
-    "exploration_sigma": 0.2,
-    # Update the target network every `target_network_update_freq` steps.
-    "target_network_update_freq": 500,
-    # Update the target by \tau * policy + (1-\tau) * target_policy
-    "tau": 1.0,
+# number of threads for producing
+PRODUCER_REPLICA=8
+# number of threads for replaying
+REPLAY_REPLICA=4
+# trajectory length
+TRAJ_LEN = 32
 
-    # === Replay buffer ===
-    # Size of the replay buffer. Note that if async_updates is set, then
-    # each worker will have a replay buffer of this size.
-    "buffer_size": 200000,
-    # If True prioritized replay buffer will be used.
-    "prioritized_replay": True,
-    # Alpha parameter for prioritized replay buffer.
-    "prioritized_replay_alpha": 0.6,
-    # Beta parameter for sampling from prioritized replay buffer.
-    "prioritized_replay_beta": 0.4,
-    # Epsilon to add to the TD errors when updating priorities.
-    "prioritized_replay_eps": 1e-6,
-    # Whether to LZ4 compress observations
-    "compress_observations": False,
 
-    # === Optimization ===
-    # Learning rate for adam optimizer
-    "actor_lr": 1e-4,
-    "critic_lr": 1e-3,
-    # If True, use huber loss instead of squared loss for critic network
-    # Conventionally, no need to clip gradients if using a huber loss
-    "use_huber": False,
-    # Threshold of a huber loss
-    "huber_threshold": 1.0,
-    # Weights for L2 regularization
-    "l2_reg": 1e-6,
-    # If not None, clip gradients during optimization at this value
-    "grad_norm_clipping": 40.0,
-    # How many steps of the model to sample before learning starts.
-    "learning_starts": 1500,
-    # Size of a batched sampled from replay buffer for training. Note that
-    # if async_updates is set, then each worker returns gradients for a
-    # batch of this size.
-    "train_batch_size": 64,
-}
+AGENT_CONFIG=dict()
+
+
+def hack_port(hosts):
+    # the docker provided by xuhu
+    # requires this trick to avoid port conflicts
+    tps = [v.split(':') for v in hosts]
+    return [tp[0]+':'+str(int(tp[1])+1) for tp in tps]
 
 
 def main(_):
     # distributed pai tf
-    ps_hosts = FLAGS.ps_hosts.split(',')
-    worker_hosts = FLAGS.worker_hosts.split(',')
+    ps_hosts = hack_port(FLAGS.ps_hosts.split(','))
+    worker_hosts = hack_port(FLAGS.worker_hosts.split(','))
     cluster = tf.train.ClusterSpec({"ps": ps_hosts, "worker": worker_hosts})
     server = tf.train.Server(cluster, job_name=FLAGS.job_name, task_index=FLAGS.task_index)
-    #if FLAGS.job_name == "ps":
-    #    server.join()
 
     shared_job_device = "/job:ps/task:0"
     local_job_device = "/job:" + FLAGS.job_name + ("/task:%d" % FLAGS.task_index)
     global_variable_device = shared_job_device + "/cpu"
 
+    # configurations
+    with open(FLAGS.config, 'r') as ips:
+        specified_configs = json.load(ips)
+    AGENT_CONFIG.update(specified_configs)
+
     # create environment
-    if FLAGS.env == "pendulum":
+    if AGENT_CONFIG["env"] == "pendulum":
         env = gym.make("Pendulum-v0")
-    elif FLAGS.env == "prosthetics":
+    elif AGENT_CONFIG["env"] == "prosthetics":
         env = ProstheticsEnv(False)
         env = wrap_opensim(env)
     
     # create agent (actor and learner)
     is_learner = (FLAGS.job_name=="ps")#(FLAGS.task_index == 0)
-    per_producer_delta_eps = AGENT_CONFIG["noise_scale"] / (FLAGS.producer_replica * len(worker_hosts))
+    per_producer_delta_eps = AGENT_CONFIG["noise_scale"] / (PRODUCER_REPLICA * len(worker_hosts))
     
     # build graph
     g = tf.get_default_graph()
     with g.as_default():
-        tf.set_random_seed(FLAGS.seed)
 
         # create learner queue
         with tf.device(global_variable_device):
@@ -146,8 +86,8 @@ def main(_):
                 tf.add_to_collection(tf.GraphKeys.INIT_OP, tf.group(*([v.initializer for v in learner.p_func_vars+learner.a_func_vars+learner.target_p_func_vars+learner.q_func_vars+learner.target_q_func_vars]+[v.initializer for v in learner.slot_vars])))
                 dtypes = 5 * [tf.float32]
                 shapes = [
-                    tf.TensorShape((FLAGS.traj_len,)+env.observation_space.shape), tf.TensorShape((FLAGS.traj_len,)+env.action_space.shape),
-                    tf.TensorShape((FLAGS.traj_len,)+env.observation_space.shape), tf.TensorShape((FLAGS.traj_len,)), tf.TensorShape((FLAGS.traj_len,))]
+                    tf.TensorShape((TRAJ_LEN,)+env.observation_space.shape), tf.TensorShape((TRAJ_LEN,)+env.action_space.shape),
+                    tf.TensorShape((TRAJ_LEN,)+env.observation_space.shape), tf.TensorShape((TRAJ_LEN,)), tf.TensorShape((TRAJ_LEN,))]
                 queue = tf.FIFOQueue(8, dtypes, shapes, shared_name="buffer")
                 dequeue_op = queue.dequeue()
 
@@ -165,17 +105,17 @@ def main(_):
 
                 states = tf.placeholder(
                     tf.float32,
-                    shape=(FLAGS.traj_len,)+env.observation_space.shape)
+                    shape=(TRAJ_LEN,)+env.observation_space.shape)
                 actions = tf.placeholder(
                     tf.float32,
-                    shape=(FLAGS.traj_len,)+env.action_space.shape)
+                    shape=(TRAJ_LEN,)+env.action_space.shape)
                 next_states = tf.placeholder(
                     tf.float32,
-                    shape=(FLAGS.traj_len,)+env.observation_space.shape)
+                    shape=(TRAJ_LEN,)+env.observation_space.shape)
                 rewards = tf.placeholder(
-                    tf.float32, shape=(FLAGS.traj_len,))
+                    tf.float32, shape=(TRAJ_LEN,))
                 terminals = tf.placeholder(
-                    tf.float32, shape=(FLAGS.traj_len,))
+                    tf.float32, shape=(TRAJ_LEN,))
                 enqueue_op = queue.enqueue([states, actions, next_states, rewards, terminals])
             tf.add_to_collection(tf.GraphKeys.READY_FOR_LOCAL_INIT_OP, tf.report_uninitialized_variables(learner.p_func_vars+learner.a_func_vars+learner.target_p_func_vars+learner.q_func_vars+learner.target_q_func_vars+learner.slot_vars))
 
@@ -194,14 +134,14 @@ def main(_):
             print("*************************learner started*************************")
 
             replay_buffers = list()
-            for idx in range(FLAGS.replay_replica):
+            for idx in range(REPLAY_REPLICA):
                 replay_actor = ReplayThread(
                     session, dequeue_op,
-                    AGENT_CONFIG["buffer_size"] // FLAGS.replay_replica,
+                    AGENT_CONFIG["buffer_size"] // REPLAY_REPLICA,
                     AGENT_CONFIG["prioritized_replay_alpha"],
                     AGENT_CONFIG["prioritized_replay_beta"],
                     AGENT_CONFIG["prioritized_replay_eps"],
-                    AGENT_CONFIG["learning_starts"] // FLAGS.replay_replica,
+                    AGENT_CONFIG["learning_starts"] // REPLAY_REPLICA,
                     AGENT_CONFIG["train_batch_size"], idx)
                 replay_actor.start()
                 replay_buffers.append(replay_actor)
@@ -233,13 +173,13 @@ def main(_):
 
             print("*************************actor started*************************")
 
-            stat_buf = cpt.queue.Queue(maxsize=2*FLAGS.producer_replica)
+            stat_buf = cpt.queue.Queue(maxsize=2*PRODUCER_REPLICA)
             session.run(sync_op)
-            producer_eps = FLAGS.task_index * (per_producer_delta_eps * FLAGS.producer_replica)
+            producer_eps = FLAGS.task_index * (per_producer_delta_eps * PRODUCER_REPLICA)
             producers = list()
-            for idx in range(FLAGS.producer_replica):
+            for idx in range(PRODUCER_REPLICA):
                 producer = ProducerThread(
-                    FLAGS.env, actor, session,
+                    AGENT_CONFIG["env"], actor, session,
                     (states, actions, next_states, rewards, terminals), enqueue_op,
                     producer_eps, stat_buf, idx)
                 producers.append(producer)
@@ -309,16 +249,16 @@ class ProducerThread(threading.Thread):
         self.traj_next_obs.append(next_ob)
         self.traj_rwd.append(rwd)
         self.traj_done.append(done)
-        if len(self.traj_rwd) == FLAGS.traj_len:
+        if len(self.traj_rwd) == TRAJ_LEN:
             traj_obs, traj_act, traj_rwd, traj_next_obs, traj_done = self.actor.postprocess_trajectory(
                 self.traj_obs, self.traj_act, self.traj_next_obs,
                 self.traj_rwd, self.traj_done)
-            #print("%d-th producer sampled %d steps" % (self.identifier, FLAGS.traj_len))
+            #print("%d-th producer sampled %d steps" % (self.identifier, TRAJ_LEN))
             self.sess.run(self.op, feed_dict={
                 self.input_nodes[0]: self.traj_obs, self.input_nodes[1]: self.traj_act,
                 self.input_nodes[2]: self.traj_next_obs,
                 self.input_nodes[3]: self.traj_rwd, self.input_nodes[4]: self.traj_done})
-            #print("%d-th producer inserted %d steps" % (self.identifier, FLAGS.traj_len))
+            #print("%d-th producer inserted %d steps" % (self.identifier, TRAJ_LEN))
             del self.traj_obs[:]
             del self.traj_act[:]
             del self.traj_next_obs[:]
@@ -357,7 +297,7 @@ class ReplayThread(threading.Thread):
         self.train_batch_size = train_batch_size
 
         self.num_sample_steps = 0
-        #self.dummy_weights = np.ones(FLAGS.traj_len).astype("float32")
+        #self.dummy_weights = np.ones(TRAJ_LEN).astype("float32")
 
         self.identifier = replay_th
 
@@ -381,10 +321,10 @@ class ReplayThread(threading.Thread):
 
         # add trajectory
         traj = self.sess.run(self.op)
-        for i in range(FLAGS.traj_len):
+        for i in range(TRAJ_LEN):
             self.replay_buffer.add(
                 traj[0][i], traj[1][i], traj[3][i], traj[2][i], traj[4][i], 1.0)
-        self.num_sample_steps += FLAGS.traj_len
+        self.num_sample_steps += TRAJ_LEN
         #print("%d-th replay thread added %d steps" % (self.identifier, self.num_sample_steps))
 
 

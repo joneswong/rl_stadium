@@ -7,7 +7,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
-from ray.rllib.models import ModelCatalog
+import model as ModelCatalog
 
 
 A_SCOPE = "a_func"

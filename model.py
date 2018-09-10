@@ -6,6 +6,7 @@ import gym
 import numpy as np
 import tensorflow as tf
 from functools import partial
+import tensorflow.contrib.slim as slim
 
 
 def get_model(inputs,
