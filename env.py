@@ -2,8 +2,8 @@ import operator
 import numpy as np
 import gym
 from gym import spaces
-import cv2
-cv2.ocl.setUseOpenCL(False)
+#import cv2
+#cv2.ocl.setUseOpenCL(False)
 
 
 class WalkingEnv(gym.Wrapper):
@@ -25,29 +25,39 @@ class WalkingEnv(gym.Wrapper):
         accept_x1 = -0.31
         accept_x2 = 0.31
         if x_head_pelvis < accept_x1:
-            pe = 1.0
+            pe = .667
             #pe = 5.0
             #done = True
         elif x_head_pelvis < accept_x2:
             pe = 0.0
             #done = False
         else:
-            pe = 1.0
+            pe = 0.667
             #done = False
 
         z_head_pelvis = observation['body_pos']['head'][2]-observation['body_pos']['pelvis'][2]
         accept_z1 = -0.31
         accept_z2 = 0.31
         if z_head_pelvis < accept_z1:
-            pe += 1.0
+            pe += 0.667
             #pe += 5.0
             #done = True
         elif z_head_pelvis < accept_z2:
             pass
         else:
-            pe += 1.0
+            pe += 0.667
             #pe += 5.0
             #done = True
+
+        pelvis_pos_y = observation["body_pos_rot"]["pelvis"][1]
+        accept_y1 = -0.52
+        accept_y2 = 0.52
+        if pelvis_pos_y < accept_y1:
+            pe += 2.0*(accept_y1-pelvis_pos_y)
+        elif pelvis_pos_y < accept_y2:
+            pass
+        else:
+            pe += 2.0*(pelvis_pos_y-accept_y2)
 
         done = observation['body_pos']['pelvis'][1] <= 0.65
 
@@ -89,6 +99,9 @@ class WalkingEnv(gym.Wrapper):
                               'femur_l', 'femur_r', 'head', 'pelvis',
                               'torso', 'pros_foot_r', 'pros_tibia_r']:
                 res += observation[info_type][body_part]
+                #if body_part == "pelvis":
+                #    print(observation[info_type][body_part])
+        #print("***********************************************************************************")
 
         #for body_part in ['calcn_l', 'talus_l', 'tibia_l', 'toes_l',
         #                  'femur_l', 'femur_r', 'head', 'pelvis',
