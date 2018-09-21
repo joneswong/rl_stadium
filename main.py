@@ -92,7 +92,7 @@ def main(_):
                     tf.TensorShape((TRAJ_LEN,)+env.observation_space.shape), tf.TensorShape((TRAJ_LEN,)+env.action_space.shape),
                     tf.TensorShape((TRAJ_LEN,)+env.observation_space.shape), tf.TensorShape((TRAJ_LEN,)), tf.TensorShape((TRAJ_LEN,))]
                 #queue = tf.FIFOQueue(8, dtypes, shapes, shared_name="buffer")
-                queues = [tf.FIFOQueue(16, dtypes, shapes, shared_name="buffer%d"%i) for i in range(REPLAY_REPLICA)]
+                queues = [tf.FIFOQueue(32, dtypes, shapes, shared_name="buffer%d"%i) for i in range(REPLAY_REPLICA)]
                 #dequeue_op = queue.dequeue()
                 dequeue_ops = [q.dequeue() for q in queues]
 
@@ -149,14 +149,6 @@ def main(_):
                 priority_in = Queue(8)#cpt.queue.Queue(maxsize=8)
 
                 replay_actor = Process(target=f, args=(data_in, data_out, priority_in,))
-                #replay_actor = ReplayThread(
-                #    session, dequeue_op,
-                #    AGENT_CONFIG["buffer_size"] // REPLAY_REPLICA,
-                #    AGENT_CONFIG["prioritized_replay_alpha"],
-                #    AGENT_CONFIG["prioritized_replay_beta"],
-                #    AGENT_CONFIG["prioritized_replay_eps"],
-                #    AGENT_CONFIG["learning_starts"] // REPLAY_REPLICA,
-                #    AGENT_CONFIG["train_batch_size"], idx)
                 replay_actor.start()
                 replay_buffers.append(replay_actor)
                 data_ins.append(data_in)
@@ -172,14 +164,12 @@ def main(_):
             session.run(learner.update_target_expr)
             training_batch_cnt = 0
             last_target_update_iter = 0
+            num_target_update = 0
             losses = list()
             start_time = time.time()
 
             while True:
                 for i in range(REPLAY_REPLICA):
-                    #if not data_ins[i].full():
-                    #    traj = session.run(dequeue_op[i])
-                    #    data_ins[i].put(traj)
 
                     if not data_outs[i].empty():
                         (obses_t, actions, rewards, obses_tp1, dones, weights, batch_indexes) = data_outs[i].get()
@@ -208,11 +198,14 @@ def main(_):
                         if training_batch_cnt-last_target_update_iter >= AGENT_CONFIG["target_network_update_freq"]:
                             session.run(learner.update_target_expr)
                             last_target_update_iter = training_batch_cnt
+                            num_target_update += 1
+                            print("sync with target nets {} times".format(num_target_update))
 
         else:
 
             print("*************************actor started*************************")
             session.run(sync_op)
+            horizon = AGENT_CONFIG["horizon"] or float('inf')
 
             start_time = time.time()
             episode_rwds = list()
@@ -249,6 +242,8 @@ def main(_):
                     # natural epsidodic truncation and performance stats
                     episode_rwd += rwd
                     episode_len += 1
+                    if episode_len >= horizon:
+                        done = True
                     if done:
                         cur_ob = env.reset()
                         session.run(actor.reset_noise_op)
@@ -277,7 +272,7 @@ def main(_):
                 del traj_done_masks[:]
                 traj_cnt += 1
 
-                if traj_cnt % 10:
+                if traj_cnt % 8:
                     cur_time = time.time()
                     consumed_time = cur_time - start_time
                     print("%.3f timesteps/sec >>> %d timesteps" % (float(10*TRAJ_LEN)/consumed_time, traj_cnt*TRAJ_LEN))
@@ -314,18 +309,18 @@ def f(data_in, data_out, priority_in):
             replay_buffer.update_priorities(batch_indexes, new_priorities)
 
         # sample a batch for learner
-        if len(replay_buffer) > replay_start and 50*sample_step_cnt > REPLAY_REPLICA*train_step_cnt:
+        if len(replay_buffer) > replay_start and 64*sample_step_cnt > train_step_cnt:
             # (obses_t, actions, rewards, obses_tp1, dones, weights, batch_indexes)
             batch_data = replay_buffer.sample(train_batch_size, beta=beta)
             data_out.put(batch_data)
-            train_step_cnt += len(batch_data)
+            train_step_cnt += train_batch_size
 
         # add trajectory
         if not data_in.empty():
             traj = data_in.get()
             for i in range(TRAJ_LEN):
                 replay_buffer.add(
-                    traj[0][i], traj[1][i], traj[3][i], traj[2][i], traj[4][i], 1.0)
+                    traj[0][i], traj[1][i], traj[3][i], traj[2][i], traj[4][i], None)
             sample_step_cnt += TRAJ_LEN
 
         if train_step_cnt > 1048576:
