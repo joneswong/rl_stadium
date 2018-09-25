@@ -7,7 +7,7 @@ from gym import spaces
 
 
 class WalkingEnv(gym.Wrapper):
-    def __init__(self, env, skip=4):
+    def __init__(self, env, skip=3):
         """
         add 1 to original reward for each timestep except for the terminal one
         repeat an action for 4 timesteps
@@ -59,15 +59,39 @@ class WalkingEnv(gym.Wrapper):
         else:
             pe += 2.0*(pelvis_pos_y-accept_y2)
 
+        # distance between left and right foot
+        distance = np.abs(observation["body_pos"]["pros_foot_r"][0] - observation["body_pos"]["calcn_l"][0])
+        if distance > 0.5:
+            pe += 4.0*(np.abs(0.5-distance)**2)
+
+        # cross leg
+        theta = observation["body_pos_rot"]["pelvis"][1]
+        cos_theta, sin_theta = np.cos(theta), np.sin(theta)
+        pelvis_pos_x, pelvis_pos_z = observation['body_pos']['pelvis'][0], observation['body_pos']['pelvis'][2]
+        r_foot_x, r_foot_z =  observation['body_pos']['pros_foot_r'][0]-pelvis_pos_x, observation['body_pos']['pros_foot_r'][2]-pelvis_pos_z
+        ip_r = r_foot_x * sin_theta + r_foot_z * cos_theta
+        cross_leg_pe_r = max(.0-ip_r, .0)
+        l_foot_x, l_foot_z =  observation['body_pos']['calcn_l'][0]-pelvis_pos_x, observation['body_pos']['calcn_l'][2]-pelvis_pos_z
+        ip_l = l_foot_x * sin_theta + l_foot_z * cos_theta
+        cross_leg_pe_l = max(ip_l-.0, .0)
+        pe += 0.5 * (cross_leg_pe_r + cross_leg_pe_l)
+        #print("{}\t{}".format(cross_leg_pe_r, cross_leg_pe_l))
+
         done = observation['body_pos']['pelvis'][1] <= 0.65
 
         return pe, done
 
     def _bonus(self, observation):
         pelvis_v = observation['body_vel']['pelvis'][0]
-        lv = observation['body_vel']['toes_l'][0]
-        rv = observation['body_vel']['pros_foot_r'][0]
-        return min(max(.0, max(lv, rv)-pelvis_v), 1.0)
+        lv = observation['body_vel']['femur_l'][0]
+        rv = observation['body_vel']['femur_r'][0]
+
+        if lv >= rv and 0.1 > observation["body_pos"]["calcn_l"][1]:
+            return min(1.0, 5.0*(0.1 - observation["body_pos"]["calcn_l"][1])*max(lv-pelvis_v, .0))
+        elif rv > lv and 0.1 > observation["body_pos"]["pros_foot_r"][1]:
+            return min(1.0, 5.0*(0.1 - observation["body_pos"]["pros_foot_r"][1])*max(rv-pelvis_v, .0))
+        else:
+            return .0
 
     def _relative_dict_to_list(self, observation):
         res = []
@@ -102,7 +126,6 @@ class WalkingEnv(gym.Wrapper):
                 #if body_part == "pelvis":
                 #    print(observation[info_type][body_part])
         #print("***********************************************************************************")
-
         #for body_part in ['calcn_l', 'talus_l', 'tibia_l', 'toes_l',
         #                  'femur_l', 'femur_r', 'head', 'pelvis',
         #                  'torso', 'pros_foot_r', 'pros_tibia_r']:

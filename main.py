@@ -31,8 +31,10 @@ tf.flags.DEFINE_string("buckets", "", "oss buckets")
 tf.flags.DEFINE_string("config", "", "path of config file")
 
 
+SAMPLE_QUEUE_DEPTH = 2
+REPLAY_QUEUE_DEPTH = 4
 # number of threads for replaying
-REPLAY_REPLICA=4
+REPLAY_REPLICA = 4
 # trajectory length
 TRAJ_LEN = 50
 
@@ -105,7 +107,7 @@ def main(_):
                 # sync with learner
                 sync_ops = list()
                 for tgt, sc in zip(actor.p_func_vars, learner.p_func_vars):
-                    sync_ops.append(tf.assign(tgt, sc))
+                    sync_ops.append(tf.assign(tgt, sc, use_locking=True))
                 sync_op = tf.group(*(sync_ops))
 
                 states = tf.placeholder(
@@ -204,10 +206,12 @@ def main(_):
         else:
 
             print("*************************actor started*************************")
-            session.run(sync_op)
             horizon = AGENT_CONFIG["horizon"] or float('inf')
 
             start_time = time.time()
+            session.run(sync_op)
+            sync_consumed = time.time() - start_time
+
             episode_rwds = list()
             episode_lens = list()
             last_episode_cnt = 0
@@ -273,14 +277,16 @@ def main(_):
                 traj_cnt += 1
 
                 if traj_cnt % 8:
-                    cur_time = time.time()
-                    consumed_time = cur_time - start_time
+                    consumed_time = time.time() - start_time
                     print("%.3f timesteps/sec >>> %d timesteps" % (float(10*TRAJ_LEN)/consumed_time, traj_cnt*TRAJ_LEN))
                     print("enqueue ops cost {}".format(enqueue_consumed/consumed_time, '%'))
+                    print("sync param ops cost {}".format(sync_consumed/consumed_time, '%'))
+
+                    start_time = time.time()
                     session.run(sync_op)
+                    sync_consumed = time.time() - start_time
                     enqueue_consumed = .0
-                    start_time = cur_time
-                    
+
                 if len(episode_lens) - last_episode_cnt >= 10:
                     print("mean_50_reward=%.3f\tmean_50_len=%d >>> %d episodes" % (np.mean(episode_rwds[-50:]), np.mean(episode_lens[-50:]), len(episode_lens)))
                     last_episode_cnt = len(episode_lens)
@@ -293,7 +299,7 @@ def f(data_in, data_out, priority_in):
     replay_buffer = PrioritizedReplayBuffer(
         AGENT_CONFIG["buffer_size"], alpha=AGENT_CONFIG["prioritized_replay_alpha"])
     eps = AGENT_CONFIG["prioritized_replay_eps"]
-    replay_start = AGENT_CONFIG["learning_starts"]
+    replay_start = AGENT_CONFIG["learning_starts"] // REPLAY_REPLICA
     train_batch_size = AGENT_CONFIG["train_batch_size"]
     beta = AGENT_CONFIG["prioritized_replay_beta"]
 
@@ -301,29 +307,32 @@ def f(data_in, data_out, priority_in):
     train_step_cnt = .0
 
     while True:
+        # add trajectory
+        for _ in range(SAMPLE_QUEUE_DEPTH):
+            if not data_in.empty():
+                traj = data_in.get()
+                for i in range(TRAJ_LEN):
+                    replay_buffer.add(
+                        traj[0][i], traj[1][i], traj[3][i], traj[2][i], traj[4][i], None)
+                sample_step_cnt += TRAJ_LEN
+
+        # sample a batch for learner
+        if len(replay_buffer) > replay_start:# and 64*sample_step_cnt > train_step_cnt:
+            for _ in range(REPLAY_QUEUE_DEPTH):
+                if not data_out.full():
+                    # (obses_t, actions, rewards, obses_tp1, dones, weights, batch_indexes)
+                    batch_data = replay_buffer.sample(train_batch_size, beta=beta)
+                    data_out.put(batch_data)
+                    train_step_cnt += train_batch_size
+
         # update priority
-        if not priority_in.empty():
-            # (batch_indexes, td_errors)
+        while not priority_in.empty():
             (batch_indexes, td_errors) = priority_in.get()
             new_priorities = (np.abs(td_errors) + eps)
             replay_buffer.update_priorities(batch_indexes, new_priorities)
 
-        # sample a batch for learner
-        if len(replay_buffer) > replay_start and 64*sample_step_cnt > train_step_cnt:
-            # (obses_t, actions, rewards, obses_tp1, dones, weights, batch_indexes)
-            batch_data = replay_buffer.sample(train_batch_size, beta=beta)
-            data_out.put(batch_data)
-            train_step_cnt += train_batch_size
-
-        # add trajectory
-        if not data_in.empty():
-            traj = data_in.get()
-            for i in range(TRAJ_LEN):
-                replay_buffer.add(
-                    traj[0][i], traj[1][i], traj[3][i], traj[2][i], traj[4][i], None)
-            sample_step_cnt += TRAJ_LEN
-
         if train_step_cnt > 1048576:
+            print("sample_time_steps={}\ttrain_time_steps={}".format(sample_step_cnt, train_step_cnt))
             train_step_cnt = 0
             sample_step_cnt = 0
 

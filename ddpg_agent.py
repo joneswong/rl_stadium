@@ -213,9 +213,27 @@ class DDPGPolicyGraph(object):
                 if "bias" not in var.name:
                     self.loss.critic_loss += (
                         config["l2_reg"] * 0.5 * tf.nn.l2_loss(var))
-        self.opt_op = [self.actor_optimizer.minimize(self.loss.actor_loss),
-                       self.critic_optimizer.minimize(self.loss.critic_loss)]
+        #self.opt_op = [self.actor_optimizer.minimize(self.loss.actor_loss),
+        #               self.critic_optimizer.minimize(self.loss.critic_loss)]
+        #self.opt_op = tf.group(*(self.opt_op))
+        actor_grads_and_vars = _minimize_and_clip(
+                self.actor_optimizer,
+                self.loss.actor_loss,
+                var_list=self.p_func_vars,
+                clip_val=self.config["grad_norm_clipping"])
+        critic_grads_and_vars = _minimize_and_clip(
+            self.critic_optimizer,
+            self.loss.critic_loss,
+            var_list=self.q_func_vars,
+            clip_val=self.config["grad_norm_clipping"])
+        actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
+                                if g is not None]
+        critic_grads_and_vars = [(g, v) for (g, v) in critic_grads_and_vars
+                                 if g is not None]
+        self.opt_op = [self.actor_optimizer.apply_gradients(grads_and_vars=actor_grads_and_vars),
+                       self.critic_optimizer.apply_gradients(grads_and_vars=critic_grads_and_vars)]
         self.opt_op = tf.group(*(self.opt_op))
+
         slots_variables = [
             self.actor_optimizer._slots[slot][key]
             for slot in sorted(self.actor_optimizer._slots)
@@ -229,23 +247,6 @@ class DDPGPolicyGraph(object):
         ]
         slots_variables += list(self.critic_optimizer._get_beta_accumulators())
         self.slot_vars = slots_variables
-
-        #actor_optimizer_slots = [
-        #    self.actor_optimizer.get_slot(var, name)
-        #    for name in self.actor_optimizer.get_slot_names()
-        #    for var in self.p_func_vars
-        #]
-        #actor_optimizer_slots.extend([self.actor_optimizer._beta1_power, self.actor_optimizer._beta2_power])
-        #print("actor_optimizer_slots_len: %d" % len(actor_optimizer_slots))
-        #critic_optimizer_slots = [
-        #    self.critic_optimizer.get_slot(var, name)
-        #    for name in self.critic_optimizer.get_slot_names()
-        #    for var in self.q_func_vars
-        #]
-        #critic_optimizer_slots.extend([self.critic_optimizer._beta1_power, self.critic_optimizer._beta2_power])
-        #print(len(critic_optimizer_slots))
-        #self.slot_vars = [v for v in actor_optimizer_slots+critic_optimizer_slots if v is not None]
-        #print("exclude none: %d" % len(self.slot_vars))
 
         # update_target_fn will be called periodically to copy Q network to
         # target Q network

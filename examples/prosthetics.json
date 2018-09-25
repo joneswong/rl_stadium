@@ -18,9 +18,9 @@
     "noise_scale": 2.5,
     "exploration_theta": 0.15,
     "exploration_sigma": 0.2,
-    "target_network_update_freq": 2500,
+    "target_network_update_freq": 3000,
     "tau": 1.0,
-    "buffer_size": 2000000,
+    "buffer_size": 1000000,
     "prioritized_replay": true,
     "prioritized_replay_alpha": 0.6,
     "prioritized_replay_beta": 0.4,
@@ -32,6 +32,6 @@
     "huber_threshold": 1.0,
     "l2_reg": 1e-6,
     "grad_norm_clipping": 40.0,
-    "learning_starts": 5000,
+    "learning_starts": 50000,
     "train_batch_size": 256
 }
