@@ -18,7 +18,7 @@
     "noise_scale": 2.5,
     "exploration_theta": 0.15,
     "exploration_sigma": 0.2,
-    "target_network_update_freq": 3000,
+    "target_network_update_freq": 2500,
     "tau": 1.0,
     "buffer_size": 1000000,
     "prioritized_replay": true,

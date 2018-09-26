@@ -146,9 +146,9 @@ def main(_):
         server.target,
         is_chief=is_learner,
         checkpoint_dir=FLAGS.checkpointDir,
-        save_checkpoint_secs=120,
-        save_summaries_secs=30,
-        log_step_count_steps=50000,
+        save_checkpoint_secs=3600,
+        save_summaries_secs=120,
+        log_step_count_steps=200000,
         config=tf.ConfigProto(allow_soft_placement=True)) as session:
 
         if is_learner:
@@ -230,6 +230,9 @@ def main(_):
                     print(">>>>>>>>>>>>mean_episodes_reward={}".format(perf))
                     if perf >= stop_criteria:
                         completed.set()
+                        for p in replay_buffers:
+                            p.terminate()
+                        time.sleep(3)
                         break
                     del metrics[:num_actors]
 
