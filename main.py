@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
+import time, os
 import threading
 from multiprocessing import Process, Queue
 import six.moves as cpt
@@ -25,7 +25,8 @@ tf.flags.DEFINE_string("job_name", "", "job_name")
 tf.flags.DEFINE_integer("task_index", "-1", "task_index")
 tf.flags.DEFINE_string("tables", "", "tables names")
 tf.flags.DEFINE_string("outputs", "", "output tables names")
-tf.flags.DEFINE_string("checkpointDir", "", "oss buckets for saving checkpoint")
+# no oss now, use default local dir tmp_ckpt
+tf.flags.DEFINE_string("checkpointDir", "tmp_ckpt", "oss buckets for saving checkpoint")
 tf.flags.DEFINE_string("buckets", "", "oss buckets")
 # user defined
 tf.flags.DEFINE_string("config", "", "path of config file")
@@ -85,23 +86,24 @@ def main(_):
 
         # create learner queue
         with tf.device(global_variable_device):
+            global_step = tf.train.get_or_create_global_step()
             with tf.variable_scope("learner") as ps_scope:
                 learner = DDPGPolicyGraph(
-                    env.observation_space, env.action_space, AGENT_CONFIG)
-                tf.add_to_collection(tf.GraphKeys.INIT_OP, tf.group(*([v.initializer for v in learner.p_func_vars+learner.a_func_vars+learner.target_p_func_vars+learner.q_func_vars+learner.target_q_func_vars]+[v.initializer for v in learner.slot_vars])))
+                    env.observation_space, env.action_space, AGENT_CONFIG, global_step)
+                tf.add_to_collection(tf.GraphKeys.INIT_OP, tf.group(*([v.initializer for v in learner.p_func_vars+learner.a_func_vars+learner.target_p_func_vars+learner.q_func_vars+learner.target_q_func_vars]+[v.initializer for v in learner.slot_vars]+[global_step.initializer])))
                 dtypes = 5 * [tf.float32]
                 shapes = [
                     tf.TensorShape((TRAJ_LEN,)+env.observation_space.shape), tf.TensorShape((TRAJ_LEN,)+env.action_space.shape),
                     tf.TensorShape((TRAJ_LEN,)+env.observation_space.shape), tf.TensorShape((TRAJ_LEN,)), tf.TensorShape((TRAJ_LEN,))]
-                #queue = tf.FIFOQueue(8, dtypes, shapes, shared_name="buffer")
                 queues = [tf.FIFOQueue(32, dtypes, shapes, shared_name="buffer%d"%i) for i in range(REPLAY_REPLICA)]
-                #dequeue_op = queue.dequeue()
                 dequeue_ops = [q.dequeue() for q in queues]
+                metrics_queue = tf.FIFOQueue(num_actors, dtypes=[tf.float32], shapes=[()], shared_name="metrics_queue")
+                collect_metrics = metrics_queue.dequeue()
 
         with tf.device(local_job_device+"/cpu"):
             if not is_learner:
                 actor = DDPGPolicyGraph(
-                    env.observation_space, env.action_space, AGENT_CONFIG)
+                    env.observation_space, env.action_space, AGENT_CONFIG, global_step)
                 tf.add_to_collection(tf.GraphKeys.LOCAL_INIT_OP, tf.group(*([v.initializer for v in actor.p_func_vars+actor.a_func_vars+actor.target_p_func_vars+actor.q_func_vars+actor.target_q_func_vars]+[v.initializer for v in actor.slot_vars])))
 
                 # sync with learner
@@ -110,6 +112,7 @@ def main(_):
                     sync_ops.append(tf.assign(tgt, sc, use_locking=True))
                 sync_op = tf.group(*(sync_ops))
 
+                # enqueue
                 states = tf.placeholder(
                     tf.float32,
                     shape=(TRAJ_LEN,)+env.observation_space.shape)
@@ -123,22 +126,32 @@ def main(_):
                     tf.float32, shape=(TRAJ_LEN,))
                 terminals = tf.placeholder(
                     tf.float32, shape=(TRAJ_LEN,))
-                #enqueue_op = queue.enqueue([states, actions, next_states, rewards, terminals])
                 enqueue_ops = [q.enqueue([states, actions, next_states, rewards, terminals]) for q in queues]
+                
+                # contribute metrics
+                lt_return = tf.placeholder(
+                    tf.float32, shape=())
+                contribute_metrics = metrics_queue.enqueue([lt_return])
+
             tf.add_to_collection(tf.GraphKeys.READY_FOR_LOCAL_INIT_OP, tf.report_uninitialized_variables(learner.p_func_vars+learner.a_func_vars+learner.target_p_func_vars+learner.q_func_vars+learner.target_q_func_vars+learner.slot_vars))
 
     # create session and run
+    # hack for ckpt
+    if is_learner:
+        os.system("mkdir "+FLAGS.checkpointDir)
+        os.system('osscmd --host=oss-cn-hangzhou-zmf.aliyuncs.com --id=LTAI7wU9Qj3OQo0t --key=JHIACB8W1vu6ZFFF6V6k1ZrqrG4I8k mkdir oss://142534/nips18/ckpt')
+        stop_criteria = AGENT_CONFIG["stop_criteria"]
+    
     with tf.train.MonitoredTrainingSession(
         server.target,
         is_chief=is_learner,
         checkpoint_dir=FLAGS.checkpointDir,
-        save_checkpoint_secs=600,
+        save_checkpoint_secs=120,
         save_summaries_secs=30,
         log_step_count_steps=50000,
         config=tf.ConfigProto(allow_soft_placement=True)) as session:
 
         if is_learner:
-
             print("*************************learner started*************************")
             
             replay_buffers = list()
@@ -157,11 +170,18 @@ def main(_):
                 data_outs.append(data_out)
                 priority_ins.append(priority_in)
 
+            # multi-thread for dequeue operations
+            completed = threading.Event()
             op_runners = list()
             for idx in range(REPLAY_REPLICA):
-                trd = DequeueThread(session, dequeue_ops[idx], data_ins[idx])
+                trd = DequeueThread(session, dequeue_ops[idx], data_ins[idx], completed)
                 trd.start()
                 op_runners.append(trd)
+
+            metrics = list()
+            metrics_channel = Queue()
+            metrics_collecter = DequeueThread(session, collect_metrics, metrics_channel, completed)
+            metrics_collecter.start()
 
             session.run(learner.update_target_expr)
             training_batch_cnt = 0
@@ -203,9 +223,19 @@ def main(_):
                             num_target_update += 1
                             print("sync with target nets {} times".format(num_target_update))
 
-        else:
+                while not metrics_channel.empty():
+                    metrics.append(metrics_channel.get())
+                if len(metrics) >= num_actors:
+                    perf = np.mean(metrics[-num_actors:])
+                    print(">>>>>>>>>>>>mean_episodes_reward={}".format(perf))
+                    if perf >= stop_criteria:
+                        completed.set()
+                        break
+                    del metrics[:num_actors]
 
+        else:
             print("*************************actor started*************************")
+
             horizon = AGENT_CONFIG["horizon"] or float('inf')
 
             start_time = time.time()
@@ -253,6 +283,8 @@ def main(_):
                         session.run(actor.reset_noise_op)
                         episode_rwds.append(episode_rwd)
                         episode_lens.append(episode_len)
+                        if FLAGS.task_index >= 2*num_actors//3:
+                            session.run(contribute_metrics, feed_dict={lt_return: episode_rwd})
                         episode_rwd = .0
                         episode_len = 0
                     else:
@@ -290,6 +322,10 @@ def main(_):
                 if len(episode_lens) - last_episode_cnt >= 10:
                     print("mean_50_reward=%.3f\tmean_50_len=%d >>> %d episodes" % (np.mean(episode_rwds[-50:]), np.mean(episode_lens[-50:]), len(episode_lens)))
                     last_episode_cnt = len(episode_lens)
+
+    # upload util the session is closed
+    if is_learner:
+        os.system('osscmd --host=oss-cn-hangzhou-zmf.aliyuncs.com --id=LTAI7wU9Qj3OQo0t --key=JHIACB8W1vu6ZFFF6V6k1ZrqrG4I8k uploadfromdir tmp_ckpt oss://142534/nips18/ckpt')
 
     print("done.")
 
@@ -338,7 +374,7 @@ def f(data_in, data_out, priority_in):
 
 
 class DequeueThread(threading.Thread):
-    def __init__(self, sess, dequeue_op, recv):
+    def __init__(self, sess, dequeue_op, recv, signal):
         threading.Thread.__init__(self)
         self.daemon = True
 
@@ -346,8 +382,10 @@ class DequeueThread(threading.Thread):
         self.dequeue_op = dequeue_op
         self.recv = recv
 
+        self.signal = signal
+
     def run(self):
-        while True:
+        while not self.signal.is_set():
             traj = self.sess.run(self.dequeue_op)
             self.recv.put(traj)
 

@@ -120,7 +120,7 @@ class ActorCriticLoss(object):
 
 
 class DDPGPolicyGraph(object):
-    def __init__(self, observation_space, action_space, config):
+    def __init__(self, observation_space, action_space, config, global_step):
         if not isinstance(action_space, Box):
             raise TypeError(
                 "Action space {} is not supported for DDPG.".format(
@@ -213,27 +213,34 @@ class DDPGPolicyGraph(object):
                 if "bias" not in var.name:
                     self.loss.critic_loss += (
                         config["l2_reg"] * 0.5 * tf.nn.l2_loss(var))
-        #self.opt_op = [self.actor_optimizer.minimize(self.loss.actor_loss),
-        #               self.critic_optimizer.minimize(self.loss.critic_loss)]
-        #self.opt_op = tf.group(*(self.opt_op))
-        actor_grads_and_vars = _minimize_and_clip(
-                self.actor_optimizer,
-                self.loss.actor_loss,
-                var_list=self.p_func_vars,
+        if self.config["grad_norm_clipping"]:
+            actor_grads_and_vars = _minimize_and_clip(
+                    self.actor_optimizer,
+                    self.loss.actor_loss,
+                    var_list=self.p_func_vars,
+                    clip_val=self.config["grad_norm_clipping"])
+            critic_grads_and_vars = _minimize_and_clip(
+                self.critic_optimizer,
+                self.loss.critic_loss,
+                var_list=self.q_func_vars,
                 clip_val=self.config["grad_norm_clipping"])
-        critic_grads_and_vars = _minimize_and_clip(
-            self.critic_optimizer,
-            self.loss.critic_loss,
-            var_list=self.q_func_vars,
-            clip_val=self.config["grad_norm_clipping"])
-        actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
-                                if g is not None]
-        critic_grads_and_vars = [(g, v) for (g, v) in critic_grads_and_vars
-                                 if g is not None]
-        self.opt_op = [self.actor_optimizer.apply_gradients(grads_and_vars=actor_grads_and_vars),
-                       self.critic_optimizer.apply_gradients(grads_and_vars=critic_grads_and_vars)]
-        self.opt_op = tf.group(*(self.opt_op))
+            actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
+                                    if g is not None]
+            critic_grads_and_vars = [(g, v) for (g, v) in critic_grads_and_vars
+                                     if g is not None]
+            self.opt_op = [self.actor_optimizer.apply_gradients(
+                               grads_and_vars=actor_grads_and_vars,
+                               global_step=global_step),
+                           self.critic_optimizer.apply_gradients(
+                               grads_and_vars=critic_grads_and_vars,
+                               global_step=global_step)]
+            self.opt_op = tf.group(*(self.opt_op))
+        else:
+            self.opt_op = [self.actor_optimizer.minimize(self.loss.actor_loss),
+                           self.critic_optimizer.minimize(self.loss.critic_loss)]
+            self.opt_op = tf.group(*(self.opt_op))
 
+        # get variables of optimizer for initialization
         slots_variables = [
             self.actor_optimizer._slots[slot][key]
             for slot in sorted(self.actor_optimizer._slots)
