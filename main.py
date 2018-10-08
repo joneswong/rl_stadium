@@ -25,8 +25,8 @@ tf.flags.DEFINE_string("job_name", "", "job_name")
 tf.flags.DEFINE_integer("task_index", "-1", "task_index")
 tf.flags.DEFINE_string("tables", "", "tables names")
 tf.flags.DEFINE_string("outputs", "", "output tables names")
-# no oss now, use default local dir tmp_ckpt
-tf.flags.DEFINE_string("checkpointDir", "tmp_ckpt", "oss buckets for saving checkpoint")
+# no oss now, use default local dir tmp
+tf.flags.DEFINE_string("checkpointDir", "tmp", "oss buckets for saving checkpoint")
 tf.flags.DEFINE_string("buckets", "", "oss buckets")
 # user defined
 tf.flags.DEFINE_string("config", "", "path of config file")
@@ -138,17 +138,17 @@ def main(_):
     # create session and run
     # hack for ckpt
     if is_learner:
-        os.system("mkdir "+FLAGS.checkpointDir)
+        os.system("mkdir tmp")
         os.system('osscmd --host=oss-cn-hangzhou-zmf.aliyuncs.com --id=LTAI7wU9Qj3OQo0t --key=JHIACB8W1vu6ZFFF6V6k1ZrqrG4I8k mkdir oss://142534/nips18/ckpt')
         stop_criteria = AGENT_CONFIG["stop_criteria"]
     
     with tf.train.MonitoredTrainingSession(
         server.target,
         is_chief=is_learner,
-        checkpoint_dir=FLAGS.checkpointDir,
-        save_checkpoint_secs=3600,
-        save_summaries_secs=120,
-        log_step_count_steps=200000,
+        checkpoint_dir='tmp',
+        save_checkpoint_secs=36000,
+        save_summaries_secs=18000,
+        log_step_count_steps=500000,
         config=tf.ConfigProto(allow_soft_placement=True)) as session:
 
         if is_learner:
@@ -233,6 +233,8 @@ def main(_):
                         for p in replay_buffers:
                             p.terminate()
                         time.sleep(3)
+                        for p in replay_buffers:
+                            p.join()
                         break
                     del metrics[:num_actors]
 
@@ -328,7 +330,8 @@ def main(_):
 
     # upload util the session is closed
     if is_learner:
-        os.system('osscmd --host=oss-cn-hangzhou-zmf.aliyuncs.com --id=LTAI7wU9Qj3OQo0t --key=JHIACB8W1vu6ZFFF6V6k1ZrqrG4I8k uploadfromdir tmp_ckpt oss://142534/nips18/ckpt')
+        print("there are {} files to upload.".format(len([name for name in os.listdir('tmp') if os.path.isfile(name)])))
+        os.system('osscmd --host=oss-cn-hangzhou-zmf.aliyuncs.com --id=LTAI7wU9Qj3OQo0t --key=JHIACB8W1vu6ZFFF6V6k1ZrqrG4I8k uploadfromdir tmp oss://142534/nips18/ckpt')
 
     print("done.")
 
@@ -385,12 +388,20 @@ class DequeueThread(threading.Thread):
         self.dequeue_op = dequeue_op
         self.recv = recv
 
+        self.sampled_batch_cnt = 0
         self.signal = signal
 
     def run(self):
+        start_time = time.time()
+
         while not self.signal.is_set():
             traj = self.sess.run(self.dequeue_op)
             self.recv.put(traj)
+            self.sampled_batch_cnt += 1
+
+        duration = time.time() - start_time
+        sampled_timesteps = self.sampled_batch_cnt * TRAJ_LEN
+        print("Sampled {} timesteps with throughput {} timesteps/sec".format(sampled_timesteps, sampled_timesteps/duration))
 
 
 """

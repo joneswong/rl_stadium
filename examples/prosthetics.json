@@ -34,5 +34,5 @@
     "grad_norm_clipping": 40.0,
     "learning_starts": 50000,
     "train_batch_size": 256,
-    "stop_criteria": 2000
+    "stop_criteria": 2500
 }
