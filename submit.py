@@ -141,9 +141,6 @@ def main(_):
     # create session and run
     # hack for ckpt
     if is_learner:
-        #os.system("mkdir tmp")
-        #os.system('osscmd --host=oss-cn-hangzhou-zmf.aliyuncs.com --id=LTAI7wU9Qj3OQo0t --key=JHIACB8W1vu6ZFFF6V6k1ZrqrG4I8k mkdir oss://142534/nips18/ckpt')
-        #stop_criteria = AGENT_CONFIG["stop_criteria"]
         saver = tf.train.Saver()
     
     with tf.train.MonitoredTrainingSession(
