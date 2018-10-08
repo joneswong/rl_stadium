@@ -74,7 +74,7 @@ class WalkingEnv(gym.Wrapper):
         l_foot_x, l_foot_z =  observation['body_pos']['calcn_l'][0]-pelvis_pos_x, observation['body_pos']['calcn_l'][2]-pelvis_pos_z
         ip_l = l_foot_x * sin_theta + l_foot_z * cos_theta
         cross_leg_pe_l = max(ip_l-.0, .0)
-        pe += 0.5 * (cross_leg_pe_r + cross_leg_pe_l)
+        pe += 8 * (cross_leg_pe_r + cross_leg_pe_l)
         #print("{}\t{}".format(cross_leg_pe_r, cross_leg_pe_l))
 
         done = observation['body_pos']['pelvis'][1] <= 0.65

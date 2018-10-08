@@ -182,12 +182,14 @@ def main(_):
             metrics_channel = Queue()
             metrics_collecter = DequeueThread(session, collect_metrics, metrics_channel, completed)
             metrics_collecter.start()
+            least_considered = 16 if AGENT_CONFIG["env"] == "pendulum" else num_actors
 
             session.run(learner.update_target_expr)
             training_batch_cnt = 0
             last_target_update_iter = 0
             num_target_update = 0
             losses = list()
+            whole_start_time = time.time()
             start_time = time.time()
 
             while True:
@@ -225,9 +227,12 @@ def main(_):
 
                 while not metrics_channel.empty():
                     metrics.append(metrics_channel.get())
-                if len(metrics) >= num_actors:
-                    perf = np.mean(metrics[-num_actors:])
-                    print(">>>>>>>>>>>>mean_episodes_reward={}".format(perf))
+                if len(metrics) >= least_considered:
+                    perf = np.mean(metrics[-least_considered:])
+                    print(">>>>>>>>>>>>mean_episodes_reward={}\ttimesteps={}\twalltime={}".format(
+                        perf,
+                        np.sum([t.sampled_batch_cnt for t in op_runners]) * TRAJ_LEN,
+                        time.time()-whole_start_time))
                     if perf >= stop_criteria:
                         completed.set()
                         for p in replay_buffers:
@@ -392,16 +397,16 @@ class DequeueThread(threading.Thread):
         self.signal = signal
 
     def run(self):
-        start_time = time.time()
+        #start_time = time.time()
 
         while not self.signal.is_set():
             traj = self.sess.run(self.dequeue_op)
             self.recv.put(traj)
             self.sampled_batch_cnt += 1
 
-        duration = time.time() - start_time
-        sampled_timesteps = self.sampled_batch_cnt * TRAJ_LEN
-        print("Sampled {} timesteps with throughput {} timesteps/sec".format(sampled_timesteps, sampled_timesteps/duration))
+        #duration = time.time() - start_time
+        #sampled_timesteps = self.sampled_batch_cnt * TRAJ_LEN
+        #print("Sampled {} timesteps with throughput {} timesteps/sec".format(sampled_timesteps, sampled_timesteps/duration))
 
 
 """
