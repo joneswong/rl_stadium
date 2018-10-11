@@ -11,7 +11,7 @@ import numpy as np
 import tensorflow as tf
 import gym
 from osim.env import ProstheticsEnv
-
+from search_ranking_gym_env import GoodStuffEpisodicEnv
 from env import wrap_opensim
 from ddpg_agent import DDPGPolicyGraph
 from replay_buffer import PrioritizedReplayBuffer
@@ -36,9 +36,6 @@ SAMPLE_QUEUE_DEPTH = 2
 REPLAY_QUEUE_DEPTH = 4
 # number of threads for replaying
 REPLAY_REPLICA = 4
-# trajectory length
-TRAJ_LEN = 50
-
 
 AGENT_CONFIG=dict()
 
@@ -66,20 +63,24 @@ def main(_):
         specified_configs = json.load(ips)
     AGENT_CONFIG.update(specified_configs)
 
+    is_learner = (FLAGS.job_name=="ps")
+    num_actors = len(worker_hosts)
+    # do NOT use a single worker
+    per_worker_eps = AGENT_CONFIG["noise_scale"] * (0.4**(1 + FLAGS.task_index / float(num_actors-1) * 7))
+    print("actor eps: %.3f" % per_worker_eps)
+
     # create environment
     if AGENT_CONFIG["env"] == "pendulum":
         env = gym.make("Pendulum-v0")
     elif AGENT_CONFIG["env"] == "prosthetics":
         env = ProstheticsEnv(False)
         env = wrap_opensim(env)
+    elif AGENT_CONFIG["env"] == "sr":
+        env = GoodStuffEpisodicEnv({
+            "input_path": "/gruntdata/app_data/jones.wz/rl/search_ranking/A3gent/search_ranking/episodic_data.tsv",
+            "shuffle": True, "task_index": FLAGS.task_index, "num_partitions": num_actors})
     
     # create agent (actor and learner)
-    is_learner = (FLAGS.job_name=="ps")
-    num_actors = len(worker_hosts)
-    # do NOT use a single worker
-    per_worker_eps = AGENT_CONFIG["noise_scale"] * (0.4**(1 + FLAGS.task_index / float(num_actors-1) * 7))
-    print("actor eps: %.3f" % per_worker_eps)
-    
     # build graph
     g = tf.get_default_graph()
     with g.as_default():
@@ -93,8 +94,8 @@ def main(_):
                 tf.add_to_collection(tf.GraphKeys.INIT_OP, tf.group(*([v.initializer for v in learner.p_func_vars+learner.a_func_vars+learner.target_p_func_vars+learner.q_func_vars+learner.target_q_func_vars]+[v.initializer for v in learner.slot_vars]+[global_step.initializer])))
                 dtypes = 5 * [tf.float32]
                 shapes = [
-                    tf.TensorShape((TRAJ_LEN,)+env.observation_space.shape), tf.TensorShape((TRAJ_LEN,)+env.action_space.shape),
-                    tf.TensorShape((TRAJ_LEN,)+env.observation_space.shape), tf.TensorShape((TRAJ_LEN,)), tf.TensorShape((TRAJ_LEN,))]
+                    tf.TensorShape((AGENT_CONFIG["sample_batch_size"],)+env.observation_space.shape), tf.TensorShape((AGENT_CONFIG["sample_batch_size"],)+env.action_space.shape),
+                    tf.TensorShape((AGENT_CONFIG["sample_batch_size"],)+env.observation_space.shape), tf.TensorShape((AGENT_CONFIG["sample_batch_size"],)), tf.TensorShape((AGENT_CONFIG["sample_batch_size"],))]
                 queues = [tf.FIFOQueue(32, dtypes, shapes, shared_name="buffer%d"%i) for i in range(REPLAY_REPLICA)]
                 dequeue_ops = [q.dequeue() for q in queues]
                 metrics_queue = tf.FIFOQueue(num_actors, dtypes=[tf.float32], shapes=[()], shared_name="metrics_queue")
@@ -115,17 +116,17 @@ def main(_):
                 # enqueue
                 states = tf.placeholder(
                     tf.float32,
-                    shape=(TRAJ_LEN,)+env.observation_space.shape)
+                    shape=(AGENT_CONFIG["sample_batch_size"],)+env.observation_space.shape)
                 actions = tf.placeholder(
                     tf.float32,
-                    shape=(TRAJ_LEN,)+env.action_space.shape)
+                    shape=(AGENT_CONFIG["sample_batch_size"],)+env.action_space.shape)
                 next_states = tf.placeholder(
                     tf.float32,
-                    shape=(TRAJ_LEN,)+env.observation_space.shape)
+                    shape=(AGENT_CONFIG["sample_batch_size"],)+env.observation_space.shape)
                 rewards = tf.placeholder(
-                    tf.float32, shape=(TRAJ_LEN,))
+                    tf.float32, shape=(AGENT_CONFIG["sample_batch_size"],))
                 terminals = tf.placeholder(
-                    tf.float32, shape=(TRAJ_LEN,))
+                    tf.float32, shape=(AGENT_CONFIG["sample_batch_size"],))
                 enqueue_ops = [q.enqueue([states, actions, next_states, rewards, terminals]) for q in queues]
                 
                 # contribute metrics
@@ -139,16 +140,17 @@ def main(_):
     # hack for ckpt
     if is_learner:
         os.system("mkdir tmp")
-        os.system('osscmd --host=oss-cn-hangzhou-zmf.aliyuncs.com --id=LTAI7wU9Qj3OQo0t --key=JHIACB8W1vu6ZFFF6V6k1ZrqrG4I8k mkdir oss://142534/nips18/ckpt')
+        destination_folder = "oss://142534/nips18/ckpt_" + time.asctime(time.localtime(time.time())).replace(' ', '_')
+        os.system("osscmd --host=oss-cn-hangzhou-zmf.aliyuncs.com --id=LTAI7wU9Qj3OQo0t --key=JHIACB8W1vu6ZFFF6V6k1ZrqrG4I8k mkdir " + destination_folder)
         stop_criteria = AGENT_CONFIG["stop_criteria"]
     
     with tf.train.MonitoredTrainingSession(
         server.target,
         is_chief=is_learner,
         checkpoint_dir='tmp',
-        save_checkpoint_secs=36000,
-        save_summaries_secs=18000,
-        log_step_count_steps=500000,
+        save_checkpoint_secs=36000 if AGENT_CONFIG["env"] == "prosthetics" else 600,
+        save_summaries_secs=18000 if AGENT_CONFIG["env"] == "prosthetics" else 120,
+        log_step_count_steps=500000 if AGENT_CONFIG["env"] == "prosthetics" else 1000,
         config=tf.ConfigProto(allow_soft_placement=True)) as session:
 
         if is_learner:
@@ -182,7 +184,12 @@ def main(_):
             metrics_channel = Queue()
             metrics_collecter = DequeueThread(session, collect_metrics, metrics_channel, completed)
             metrics_collecter.start()
-            least_considered = 16 if AGENT_CONFIG["env"] == "pendulum" else num_actors
+            if AGENT_CONFIG["env"] == "pendulum":
+                least_considered = 12
+            elif AGENT_CONFIG["env"] == "prosthetics":
+                least_considered = num_actors
+            elif AGENT_CONFIG["env"] == "sr":
+                least_considered = 10000
 
             session.run(learner.update_target_expr)
             training_batch_cnt = 0
@@ -231,7 +238,7 @@ def main(_):
                     perf = np.mean(metrics[-least_considered:])
                     print(">>>>>>>>>>>>mean_episodes_reward={}\ttimesteps={}\twalltime={}".format(
                         perf,
-                        np.sum([t.sampled_batch_cnt for t in op_runners]) * TRAJ_LEN,
+                        np.sum([t.sampled_batch_cnt for t in op_runners]) * AGENT_CONFIG["sample_batch_size"],
                         time.time()-whole_start_time))
                     if perf >= stop_criteria:
                         completed.set()
@@ -241,16 +248,19 @@ def main(_):
                         for p in replay_buffers:
                             p.join()
                         break
-                    del metrics[:num_actors]
+                    del metrics[:least_considered//4]
 
         else:
             print("*************************actor started*************************")
-
+            # frequently used arguments
             horizon = AGENT_CONFIG["horizon"] or float('inf')
+            traj_len = AGENT_CONFIG["sample_batch_size"]
+            sync_period = AGENT_CONFIG["max_weight_sync_delay"] // traj_len
 
             start_time = time.time()
             session.run(sync_op)
             sync_consumed = time.time() - start_time
+            enqueue_consumed = .0
 
             episode_rwds = list()
             episode_lens = list()
@@ -260,8 +270,6 @@ def main(_):
             episode_len = 0
             traj_cnt = 0
 
-            enqueue_consumed = .0
-            
             while True:
                 traj_obs = list()
                 traj_acts = list()
@@ -269,7 +277,7 @@ def main(_):
                 traj_rwds = list()
                 traj_done_masks = list()
 
-                for i in range(TRAJ_LEN):
+                for i in range(traj_len):
                     # carefully handling the batch_size dimension
                     act = session.run(actor.output_actions, feed_dict={
                         actor.cur_observations: [cur_ob], actor.eps: per_worker_eps,
@@ -318,11 +326,11 @@ def main(_):
                 del traj_done_masks[:]
                 traj_cnt += 1
 
-                if traj_cnt % 8:
+                if traj_cnt % sync_period == 0:
                     consumed_time = time.time() - start_time
-                    print("%.3f timesteps/sec >>> %d timesteps" % (float(10*TRAJ_LEN)/consumed_time, traj_cnt*TRAJ_LEN))
-                    print("enqueue ops cost {}".format(enqueue_consumed/consumed_time, '%'))
-                    print("sync param ops cost {}".format(sync_consumed/consumed_time, '%'))
+                    print("%.3f timesteps/sec >>> %d timesteps" % (float(sync_period*traj_len)/consumed_time, traj_cnt*traj_len))
+                    print("enqueue ops cost {:.2%}".format(enqueue_consumed/consumed_time))
+                    print("sync param ops cost {:.2%}".format(sync_consumed/consumed_time))
 
                     start_time = time.time()
                     session.run(sync_op)
@@ -335,8 +343,8 @@ def main(_):
 
     # upload util the session is closed
     if is_learner:
-        print("there are {} files to upload.".format(len([name for name in os.listdir('tmp') if os.path.isfile(name)])))
-        os.system('osscmd --host=oss-cn-hangzhou-zmf.aliyuncs.com --id=LTAI7wU9Qj3OQo0t --key=JHIACB8W1vu6ZFFF6V6k1ZrqrG4I8k uploadfromdir tmp oss://142534/nips18/ckpt')
+        print("there are {} files to upload.".format(len([name for name in os.listdir("tmp") if os.path.isfile("tmp/"+name)])))
+        os.system("osscmd --host=oss-cn-hangzhou-zmf.aliyuncs.com --id=LTAI7wU9Qj3OQo0t --key=JHIACB8W1vu6ZFFF6V6k1ZrqrG4I8k uploadfromdir tmp " + destination_folder)
 
     print("done.")
 
@@ -344,7 +352,8 @@ def main(_):
 def f(data_in, data_out, priority_in):
     # like Ray ReplayActor
     replay_buffer = PrioritizedReplayBuffer(
-        AGENT_CONFIG["buffer_size"], alpha=AGENT_CONFIG["prioritized_replay_alpha"])
+        AGENT_CONFIG["buffer_size"] // REPLAY_REPLICA,
+        alpha=AGENT_CONFIG["prioritized_replay_alpha"])
     eps = AGENT_CONFIG["prioritized_replay_eps"]
     replay_start = AGENT_CONFIG["learning_starts"] // REPLAY_REPLICA
     train_batch_size = AGENT_CONFIG["train_batch_size"]
@@ -358,10 +367,10 @@ def f(data_in, data_out, priority_in):
         for _ in range(SAMPLE_QUEUE_DEPTH):
             if not data_in.empty():
                 traj = data_in.get()
-                for i in range(TRAJ_LEN):
+                for i in range(len(traj[0])):
                     replay_buffer.add(
                         traj[0][i], traj[1][i], traj[3][i], traj[2][i], traj[4][i], None)
-                sample_step_cnt += TRAJ_LEN
+                sample_step_cnt += len(traj[0])
 
         # sample a batch for learner
         if len(replay_buffer) > replay_start:# and 64*sample_step_cnt > train_step_cnt:
@@ -397,66 +406,10 @@ class DequeueThread(threading.Thread):
         self.signal = signal
 
     def run(self):
-        #start_time = time.time()
-
         while not self.signal.is_set():
             traj = self.sess.run(self.dequeue_op)
             self.recv.put(traj)
             self.sampled_batch_cnt += 1
-
-        #duration = time.time() - start_time
-        #sampled_timesteps = self.sampled_batch_cnt * TRAJ_LEN
-        #print("Sampled {} timesteps with throughput {} timesteps/sec".format(sampled_timesteps, sampled_timesteps/duration))
-
-
-"""
-class ReplayThread(threading.Thread):
-    def __init__(self, sess, dequeue_op,
-                 buffer_size, alpha, beta, eps,
-                 replay_start, train_batch_size,
-                 replay_th):
-        threading.Thread.__init__(self)
-        self.daemon = True
-
-        self.sess = sess
-        self.op = dequeue_op
-        self.replay_buffer = PrioritizedReplayBuffer(buffer_size, alpha=alpha)
-        self.beta = beta
-        self.eps = eps
-        self.inqueue = cpt.queue.Queue(maxsize=8)
-        self.outqueue = cpt.queue.Queue(maxsize=8)
-        self.replay_start = replay_start
-        self.train_batch_size = train_batch_size
-
-        self.num_sample_steps = 0
-
-        self.identifier = replay_th
-
-    def run(self):
-        while True:
-            self.step()
-
-    def step(self):
-        # update priority
-        if not self.inqueue.empty():
-            # (batch_indexes, td_errors)
-            (batch_indexes, td_errors) = self.inqueue.get()
-            new_priorities = (np.abs(td_errors) + self.eps)
-            self.replay_buffer.update_priorities(batch_indexes, new_priorities)
-
-        # sample a batch for learner
-        if len(self.replay_buffer) > self.replay_start:
-            # (obses_t, actions, rewards, obses_tp1, dones, weights, batch_indexes)
-            batch_data = self.replay_buffer.sample(self.train_batch_size, beta=self.beta)
-            self.outqueue.put(batch_data)
-
-        # add trajectory
-        traj = self.sess.run(self.op)
-        for i in range(TRAJ_LEN):
-            self.replay_buffer.add(
-                traj[0][i], traj[1][i], traj[3][i], traj[2][i], traj[4][i], 1.0)
-        self.num_sample_steps += TRAJ_LEN
-"""
 
 
 if __name__ == "__main__":

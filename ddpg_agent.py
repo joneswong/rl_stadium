@@ -32,6 +32,8 @@ class PNetwork(object):
         # shape of action_scores is [batch_size, dim_actions]
         self.action_scores = layers.fully_connected(
             action_out, num_outputs=dim_actions, activation_fn=tf.nn.sigmoid)
+        #self.action_scores = tf.nn.softmax(layers.fully_connected(
+        #    action_out, num_outputs=dim_actions, activation_fn=None))
 
 
 class ActionNetwork(object):
