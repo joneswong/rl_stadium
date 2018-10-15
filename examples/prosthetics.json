@@ -18,7 +18,7 @@
     "noise_scale": 2.5,
     "exploration_theta": 0.15,
     "exploration_sigma": 0.2,
-    "target_network_update_freq": 2500,
+    "target_network_update_freq": 2000,
     "tau": 1.0,
     "buffer_size": 4000000,
     "prioritized_replay": true,
@@ -32,9 +32,9 @@
     "huber_threshold": 1.0,
     "l2_reg": 1e-6,
     "grad_norm_clipping": 40.0,
-    "learning_starts": 50000,
+    "learning_starts": 100000,
     "train_batch_size": 256,
-    "sample_batch_size": 50,
+    "sample_batch_size": 25,
     "max_weight_sync_delay": 50,
-    "stop_criteria": 2600
+    "stop_criteria": 2500
 }

@@ -22,7 +22,7 @@ class PNetwork(object):
     value from (0, 1) due to the sigmoid function."""
 
     def __init__(self, model, dim_actions, hiddens=[64, 64],
-                 activation="relu"):
+                 activation="relu", layer_normalization=False):
         action_out = model.last_layer
         activation = tf.nn.__dict__[activation]
         for hidden in hiddens:
@@ -195,6 +195,8 @@ class DDPGPolicyGraph(object):
         # q network evaluation
         with tf.variable_scope(Q_SCOPE) as scope:
             q_t = self._build_q_network(self.obs_t, self.act_t)
+            # for checking q value
+            self.q_value_tensor = q_t
             self.q_func_vars = _scope_vars(scope.name)
         with tf.variable_scope(Q_SCOPE, reuse=True):
             q_tp0 = self._build_q_network(self.obs_t, output_actions)
