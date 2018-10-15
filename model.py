@@ -7,6 +7,7 @@ import numpy as np
 import tensorflow as tf
 from functools import partial
 import tensorflow.contrib.slim as slim
+import tensorflow.contrib.layers as layers
 
 
 def get_model(inputs,
@@ -144,12 +145,23 @@ class FullyConnectedNetwork(Model):
             last_layer = inputs
             for size in hiddens:
                 label = "fc{}".format(i)
-                last_layer = slim.fully_connected(
-                    last_layer,
-                    size,
-                    weights_initializer=normc_initializer(1.0),
-                    activation_fn=activation,
-                    scope=label)
+                if options.get("fcnet_layer_normalization", False):
+                    last_layer = slim.fully_connected(
+                        last_layer,
+                        size,
+                        weights_initializer=normc_initializer(1.0),
+                        activation_fn=None,
+                        scope=label)
+                    last_layer = layers.layer_norm(
+                        last_layer, activation_fn=activation,
+                        scope="ln{}".format(i))
+                else:
+                    last_layer = slim.fully_connected(
+                        last_layer,
+                        size,
+                        weights_initializer=normc_initializer(1.0),
+                        activation_fn=activation,
+                        scope=label)
                 i += 1
             label = "fc_out"
             output = slim.fully_connected(

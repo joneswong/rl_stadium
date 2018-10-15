@@ -63,6 +63,27 @@ def get_env(env_name):
             "shuffle": True, "task_index": FLAGS.task_index, "num_partitions": len(FLAGS.worker_hosts.split(','))})
 
 
+def adjust_noise_stddev(distances, cur_stddev):
+    if distances:
+        num_samples = 0
+        d = .0
+        idx = len(distances) - 1
+        while idx >= 0:
+            num_samples += distances[idx][0]
+            d += distances[idx][0] * distances[idx][1]
+            if num_samples >= 128:
+                break
+            idx -= 1
+        if len(distances) >= 128:
+            del distances[:len(distances)//2]
+        d = np.sqrt(d / num_samples)
+        if d > AGENT_CONFIG["exploration_sigma"]:
+            return 0.9 * cur_stddev
+        else:
+            return cur_stddev / 0.9
+    return cur_stddev
+
+
 def main(_):
     # configurations
     with open(FLAGS.config, 'r') as ips:
@@ -117,18 +138,27 @@ def main(_):
             if not is_learner:
                 actor = DDPGPolicyGraph(
                     env.observation_space, env.action_space, AGENT_CONFIG, global_step)
-                tf.add_to_collection(tf.GraphKeys.LOCAL_INIT_OP, tf.group(*([v.initializer for v in actor.p_func_vars+actor.a_func_vars+actor.target_p_func_vars+actor.q_func_vars+actor.target_q_func_vars]+[v.initializer for v in actor.slot_vars])))
+                #tf.add_to_collection(tf.GraphKeys.LOCAL_INIT_OP, tf.group(*([v.initializer for v in actor.p_func_vars+actor.a_func_vars+actor.target_p_func_vars+actor.q_func_vars+actor.target_q_func_vars]+[v.initializer for v in actor.slot_vars])))
 
                 # sync with learner and add parameter space noise for policy net
+                param_noise_stddev = tf.placeholder(tf.float32, shape=())
                 sync_ops = list()
-                parameter_noise_ops = list()
+                cached_noise, gen_noise_ops, add_noise_ops, subtract_noise_ops = list(), list(), list(), list()
+                label_idx = 0
                 for tgt, sc in zip(actor.p_func_vars, learner.p_func_vars):
                     sync_ops.append(tf.assign(tgt, sc, use_locking=True))
-                    if "biases" not in tgt.name:
-                        # TO DO: add adaptive Gaussian stddev
-                        parameter_noise_ops.append(tf.assign_add(tgt, tf.random_normal(shape=tgt.shape, stddev=.2, seed=FLAGS.task_index)))
+                    if "fc" in tgt.name or "fully_connected" in tgt.name:
+                        noise = tf.get_variable(name='noise{}'.format(label_idx), dtype=tf.float32, shape=tgt.shape)
+                        label_idx += 1
+                        cached_noise.append(noise)
+                        gen_noise_ops.append(tf.assign(noise, tf.random_normal(shape=tgt.shape, stddev=param_noise_stddev, seed=FLAGS.task_index)))
+                        add_noise_ops.append(tf.assign_add(tgt, noise))
+                        subtract_noise_ops.append(tf.assign_add(tgt, -noise))
                 sync_op = tf.group(*(sync_ops))
-                parameter_noise_ops = tf.group(*(parameter_noise_ops))
+                gen_noise_ops = tf.group(*(gen_noise_ops))
+                add_noise_ops = tf.group(*(add_noise_ops))
+                subtract_noise_ops = tf.group(*(subtract_noise_ops))
+                tf.add_to_collection(tf.GraphKeys.LOCAL_INIT_OP, tf.group(*([v.initializer for v in actor.p_func_vars+actor.a_func_vars+actor.target_p_func_vars+actor.q_func_vars+actor.target_q_func_vars]+[v.initializer for v in actor.slot_vars]+[v.initializer for v in cached_noise])))
 
                 states = tf.placeholder(
                     tf.float32,
@@ -266,7 +296,7 @@ def main(_):
             # frequently used arguments
             horizon = AGENT_CONFIG["horizon"] or float('inf')
             traj_len = AGENT_CONFIG["sample_batch_size"]
-            sync_period = AGENT_CONFIG["max_weight_sync_delay"] // traj_len
+            max_policy_lag = AGENT_CONFIG["max_weight_sync_delay"]
 
             start_time = time.time()
             session.run(sync_op)
@@ -274,96 +304,136 @@ def main(_):
             enqueue_consumed = .0
             report_consumed = .0
 
-            episode_rwds = list()
-            episode_lens = list()
-            episode_cnt = 0
             cur_ob = env.reset()
             episode_rwd = .0
             episode_len = 0
-            traj_cnt = 0
-            # TO DO: specify the ratio (now 1:0)
+            episode_rwds = list()
+            episode_lens = list()
+            episode_cnt = 0
+
+            # TO DO: specify the ratio (now 1:0 or 1:1)
             use_action_noise = True
+            use_param_noise = AGENT_CONFIG.get("param_noise", False)
+            cur_param_noise_stddev = .1
+            action_distance = list()
+
+            last_sync_ts, timestep_cnt, traj_cnt = 0, 0, 0
+            traj_obs, traj_acts, traj_next_obs, traj_rwds, traj_done_masks = list(), list(), list(), list(), list()
 
             # begin sampling
             while True:
-                traj_obs = list()
-                traj_acts = list()
-                traj_next_obs = list()
-                traj_rwds = list()
-                traj_done_masks = list()
+                act = session.run(actor.output_actions, feed_dict={
+                    actor.cur_observations: [cur_ob], actor.eps: per_worker_eps,
+                    actor.stochastic: use_action_noise})[0]
+                next_ob, rwd, done, _ = env.step(act)
 
-                # sample a trajectory
-                for i in range(traj_len):
-                    act = session.run(actor.output_actions, feed_dict={
-                        actor.cur_observations: [cur_ob], actor.eps: per_worker_eps,
-                        actor.stochastic: use_action_noise})[0]
-                    next_ob, rwd, done, _ = env.step(act)
+                episode_rwd += rwd
+                episode_len += 1
+                traj_obs.append(cur_ob)
+                traj_acts.append(act)
+                traj_next_obs.append(next_ob)
+                traj_rwds.append(rwd)
+                traj_done_masks.append(done)
+                timestep_cnt += 1
 
-                    traj_obs.append(cur_ob)
-                    traj_acts.append(act)
-                    traj_next_obs.append(next_ob)
-                    traj_rwds.append(rwd)
-                    traj_done_masks.append(done)
-                        
-                    episode_rwd += rwd
-                    episode_len += 1
+                if episode_len >= horizon:
+                    done = True
+                if done:
+                    episode_rwds.append(episode_rwd)
+                    episode_lens.append(episode_len)
+                    episode_cnt += 1
+                    if FLAGS.task_index >= 2*num_actors//3:
+                        report_start_mnt = time.time()
+                        session.run(contribute_metrics, feed_dict={lt_return: episode_rwd})
+                        report_consumed += time.time() - report_start_mnt
+                    if len(episode_lens) >= 8:
+                        print("mean_reward={}\tmean_length={}".format(
+                            np.mean(episode_rwds), np.mean(episode_lens)))
+                        del episode_lens[:]
+                        del episode_rwds[:]
 
-                    if episode_len >= horizon:
-                        done = True
-                    if done:
-                        cur_ob = env.reset()
-                        session.run(actor.reset_noise_op)
-                        episode_rwds.append(episode_rwd)
-                        episode_lens.append(episode_len)
-                        episode_cnt += 1
-                        if FLAGS.task_index >= 2*num_actors//3:
-                            report_start_mnt = time.time()
-                            session.run(contribute_metrics, feed_dict={lt_return: episode_rwd})
-                            report_consumed += time.time() - report_start_mnt
-                        episode_rwd = .0
-                        episode_len = 0
+                    # adjust action/parameter space noise
+                    if use_param_noise:
+                        # use parameter space noise in the coming episode
+                        if use_action_noise:
+                            use_action_noise = False
+                            sync_start_mnt = time.time()
+                            session.run(sync_op)
+                            last_sync_ts = timestep_cnt
+                            sync_consumed = time.time() - sync_start_mnt
+                            # adjust noise stddev
+                            cur_param_noise_stddev = adjust_noise_stddev(action_distance, cur_param_noise_stddev)
+                            session.run(
+                                gen_noise_ops,
+                                feed_dict={param_noise_stddev: cur_param_noise_stddev})
+                            session.run(add_noise_ops)
+                        else:
+                            use_action_noise = True
+                            # calculate action distances
+                            session.run(subtract_noise_ops)
+                            act = session.run(actor.output_actions, feed_dict={
+                                actor.cur_observations: traj_obs,
+                                actor.eps: per_worker_eps, actor.stochastic: use_action_noise})
+                            action_distance.append((len(traj_rwds), np.mean((act-traj_acts)**2)))
                     else:
-                        cur_ob = next_ob
-            
-                traj_obs, traj_acts, traj_rwds, traj_next_obs, traj_done_masks = actor.postprocess_trajectory(
-                    traj_obs, traj_acts, traj_next_obs,
-                    traj_rwds, traj_done_masks)
+                        session.run(actor.reset_noise_op)
+                    episode_rwd = .0
+                    episode_len = 0
+                    cur_ob = env.reset()
+                else:
+                    cur_ob = next_ob
 
-                enqueue_start_mnt = time.time()
-                session.run(enqueue_ops[FLAGS.task_index%REPLAY_REPLICA], feed_dict={
-                    states: traj_obs, actions: traj_acts,
-                    next_states: traj_next_obs,
-                    rewards: traj_rwds, terminals: traj_done_masks})
-                enqueue_consumed += (time.time() - enqueue_start_mnt)
-
-                del traj_obs[:]
-                del traj_acts[:]
-                del traj_next_obs[:]
-                del traj_rwds[:]
-                del traj_done_masks[:]
-                traj_cnt += 1
-
-                if traj_cnt % sync_period == 0:
-                    consumed_time = time.time() - start_time
-                    print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-                    print("num_sampled_episode={}".format(episode_cnt))
-                    print("num_sampled_timestep={}".format(traj_cnt*traj_len))
-                    print("throughput={}".format(float(sync_period*traj_len)/consumed_time))
-                    print("enqueue_ratio={:.2%}".format(enqueue_consumed/consumed_time))
-                    print("sync_ratio={:.2%}".format(sync_consumed/consumed_time))
-                    print("report_ratio={:.2%}".format(report_consumed/consumed_time))
-                    print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-                    start_time = time.time()
+                # sync parameters
+                if use_action_noise and timestep_cnt - last_sync_ts >= max_policy_lag:
+                    sync_start_mnt = time.time()
                     session.run(sync_op)
-                    sync_consumed = time.time() - start_time
-                    enqueue_consumed = .0
-                    report_consumed = .0
+                    last_sync_ts = timestep_cnt
+                    sync_consumed = time.time() - sync_start_mnt
 
-                if len(episode_lens) >= 10:
-                    print("mean_reward={}\tmean_length={}".format(
-                        np.mean(episode_rwds), np.mean(episode_lens)))
-                    del episode_lens[:]
-                    del episode_rwds[:]
+                # reach the sample_batch_size
+                if len(traj_rwds) == traj_len:
+                    traj_cnt += 1
+                    traj_obs, traj_acts, traj_rwds, traj_next_obs, traj_done_masks = actor.postprocess_trajectory(
+                        traj_obs, traj_acts, traj_next_obs,
+                        traj_rwds, traj_done_masks)
+                    enqueue_start_mnt = time.time()
+                    session.run(enqueue_ops[FLAGS.task_index%REPLAY_REPLICA], feed_dict={
+                        states: traj_obs, actions: traj_acts,
+                        next_states: traj_next_obs,
+                        rewards: traj_rwds, terminals: traj_done_masks})
+                    enqueue_consumed += (time.time() - enqueue_start_mnt)
+
+                    # calculate action distances
+                    if use_param_noise and not use_action_noise:
+                        closest_done_idx = max(0, traj_len - (timestep_cnt-last_sync_ts))
+                        # parts of the trajectory use param noise
+                        if closest_done_idx < traj_len:
+                            session.run(subtract_noise_ops)
+                            act = session.run(actor.output_actions, feed_dict={
+                                actor.cur_observations: traj_obs[closest_done_idx:],
+                                actor.eps: per_worker_eps, actor.stochastic: use_action_noise})
+                            action_distance.append((traj_len-closest_done_idx, np.mean((act-traj_acts[closest_done_idx:])**2)))
+                            session.run(add_noise_ops)
+
+                    del traj_obs[:]
+                    del traj_acts[:]
+                    del traj_next_obs[:]
+                    del traj_rwds[:]
+                    del traj_done_masks[:]
+
+                    if traj_cnt % 8 == 0:
+                        consumed_time = time.time() - start_time
+                        print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+                        print("num_sampled_episode={}".format(episode_cnt))
+                        print("num_sampled_timestep={}".format(timestep_cnt))
+                        print("throughput={:.3}".format(float(8*traj_len)/consumed_time))
+                        print("enqueue_ratio={:.2%}".format(enqueue_consumed/consumed_time))
+                        print("sync_ratio={:.2%}".format(sync_consumed/consumed_time))
+                        print("report_ratio={:.2%}".format(report_consumed/consumed_time))
+                        print("param_noise_stddev={:.5}".format(cur_param_noise_stddev))
+                        print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+                        start_time = time.time()
+                        enqueue_consumed, sync_consumed, report_consumed = .0, .0, .0
 
     # upload util the session is closed
     if is_learner:

@@ -26,8 +26,14 @@ class PNetwork(object):
         action_out = model.last_layer
         activation = tf.nn.__dict__[activation]
         for hidden in hiddens:
-            action_out = layers.fully_connected(
-                action_out, num_outputs=hidden, activation_fn=activation)
+            if layer_normalization:
+                action_out = layers.fully_connected(
+                    action_out, num_outputs=hidden, activation_fn=None)
+                action_out = layers.layer_norm(
+                    action_out, activation_fn=activation)
+            else:
+                action_out = layers.fully_connected(
+                    action_out, num_outputs=hidden, activation_fn=activation)
         # Use sigmoid layer to bound values within (0, 1)
         # shape of action_scores is [batch_size, dim_actions]
         self.action_scores = layers.fully_connected(
@@ -76,12 +82,19 @@ class QNetwork(object):
                  model,
                  action_inputs,
                  hiddens=[64, 64],
-                 activation="relu"):
+                 activation="relu",
+                 layer_normalization=False):
         q_out = tf.concat([model.last_layer, action_inputs], axis=1)
         activation = tf.nn.__dict__[activation]
         for hidden in hiddens:
-            q_out = layers.fully_connected(
-                q_out, num_outputs=hidden, activation_fn=activation)
+            if layer_normalization:
+                q_out = layers.fully_connected(
+                    q_out, num_outputs=hidden, activation_fn=None)
+                q_out = layers.layer_norm(
+                    q_out, activation_fn=activation)
+            else:
+                q_out = layers.fully_connected(
+                    q_out, num_outputs=hidden, activation_fn=activation)
         self.value = layers.fully_connected(
             q_out, num_outputs=1, activation_fn=None)
 
@@ -281,13 +294,15 @@ class DDPGPolicyGraph(object):
         return QNetwork(
             ModelCatalog.get_model(obs, 1, self.config["model"]), actions,
             self.config["critic_hiddens"],
-            self.config["critic_hidden_activation"]).value
+            self.config["critic_hidden_activation"],
+            self.config["critic_layer_normalization"]).value
 
     def _build_p_network(self, obs):
         return PNetwork(
             ModelCatalog.get_model(obs, 1, self.config["model"]),
             self.dim_actions, self.config["actor_hiddens"],
-            self.config["actor_hidden_activation"]).action_scores
+            self.config["actor_hidden_activation"],
+            self.config["actor_layer_normalization"]).action_scores
 
     def _build_action_network(self, p_values, stochastic, eps):
         return ActionNetwork(p_values, self.low_action, self.high_action,
