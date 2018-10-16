@@ -35,8 +35,6 @@ AGENT_CONFIG=dict()
 
 
 def main(_):
-    worker_hosts = [0, 1]
-
     shared_job_device = ""
     local_job_device = ""
     global_variable_device = shared_job_device + "/cpu"
