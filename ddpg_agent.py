@@ -145,10 +145,13 @@ class DDPGPolicyGraph(object):
         self.dim_actions = action_space.shape[0]
         self.low_action = action_space.low
         self.high_action = action_space.high
+
+        self.cur_actor_lr = tf.placeholder(tf.float32, (), name = "cur_actor_lr")
+        self.cur_critic_lr = tf.placeholder(tf.float32, (), name = "cur_critic_lr")
         self.actor_optimizer = tf.train.AdamOptimizer(
-            learning_rate=config["actor_lr"])
+            learning_rate=self.cur_actor_lr)
         self.critic_optimizer = tf.train.AdamOptimizer(
-            learning_rate=config["critic_lr"])
+            learning_rate=self.cur_critic_lr)
         
         # Action inputs
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")

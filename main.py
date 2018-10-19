@@ -242,10 +242,14 @@ def main(_):
             training_batch_cnt = 0
             last_target_update_iter = 0
             num_target_update = 0
+            init_actor_lr = AGENT_CONFIG["actor_lr"]
+            init_critic_lr = AGENT_CONFIG["critic_lr"]
             losses = list()
             start_time = time.time()
 
             while True:
+                cur_actor_lr = 5e-5 + max(.0, 2e6-training_batch_cnt)/(2e6) * (init_actor_lr - 5e-5)
+                cur_critic_lr = 5e-5 + max(.0, 2e6-training_batch_cnt)/(2e6) * (init_critic_lr - 5e-5)
                 for i in range(REPLAY_REPLICA):
                     if not data_outs[i].empty():
                         (obses_t, actions, rewards, obses_tp1, dones, weights, batch_indexes) = data_outs[i].get()
@@ -257,7 +261,9 @@ def main(_):
                                 learner.rew_t: rewards,
                                 learner.obs_tp1: obses_tp1,
                                 learner.done_mask: dones,
-                                learner.importance_weights: weights})
+                                learner.importance_weights: weights,
+                                learner.cur_actor_lr: cur_actor_lr,
+                                learner.cur_critic_lr: cur_critic_lr})
                         priority_ins[i].put((batch_indexes, td_error))
 
                         training_batch_cnt += 1
@@ -279,6 +285,8 @@ def main(_):
                     print("num_sampled_timestep={}".format(np.sum([t.sampled_batch_cnt for t in op_runners]) * AGENT_CONFIG["sample_batch_size"]))
                     print("num_train_timestep={}".format(training_batch_cnt * AGENT_CONFIG["train_batch_size"]))
                     print("num_target_sync={}".format(num_target_update))
+                    print("current_actor_lr={}".format(cur_actor_lr))
+                    print("current_critic_lr={}".format(cur_critic_lr))
                     print("time_since_start={}".format(time.time()-start_time))
                     print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
                     if perf >= stop_criteria:
