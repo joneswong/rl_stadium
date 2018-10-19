@@ -45,11 +45,8 @@ def main(_):
     AGENT_CONFIG.update(specified_configs)
 
     # create environment
-    if AGENT_CONFIG["env"] == "pendulum":
-        env = gym.make("Pendulum-v0")
-    elif AGENT_CONFIG["env"] == "prosthetics":
-        env = ProstheticsEnv(False)
-        env = wrap_opensim(env, contd=True)
+    env = ProstheticsEnv(False)
+    env = wrap_opensim(env, clean=True)
                     
     # create agent (actor and learner)
     is_learner = True
@@ -127,72 +124,51 @@ def main(_):
 
         if is_learner:
             print("*************************learner started*************************")
-            #saver.restore(session, "tmp/model.ckpt-66329486")
 
             # CrowdAI related
-            #remote_base = "http://grader.crowdai.org:1729"
-            #crowdai_token = "9956ed7abd0712f9c429966ee7dddbfd"
+            remote_base = "http://grader.crowdai.org:1729"
+            crowdai_token = "cf7b1cba79e1d4444bfcc3bb0024a8f7"
 
-            #client = Client(remote_base)
-            #obs = client.env_create(crowdai_token, env_id='ProstheticsEnv')
-            #obs = env._relative_dict_to_list(obs)
-            #while True:
-            #    act = session.run(learner.output_actions, feed_dict={
-            #        learner.cur_observations: [obs],
-            #        learner.stochastic: False,
-            #        learner.eps: .0})[0]
-            #    [obs, reward, done, info] = client.env_step(act.tolist(), True)
-            #    obs = env._relative_dict_to_list(obs)
-            #    if done:
-            #        obs = client.env_reset()
-            #        if not obs:
-            #            break
-            #        obs = env._relative_dict_to_list(obs)
-            #client.submit()
-
-            # repeat actions
-            #client = Client(remote_base)
-            #obs = client.env_create(crowdai_token, env_id='ProstheticsEnv')
-            #obs = env._relative_dict_to_list(obs)
-            #repeat_cnt = 0
-            #act = None
-
-            #while True:
-            #    if repeat_cnt == 0:
-            #        act = session.run(learner.output_actions, feed_dict={
-            #            learner.cur_observations: [obs],
-            #            learner.stochastic: False,
-            #            learner.eps: .0})[0]
-            #    [obs, reward, done, info] = client.env_step(act.tolist(), True)
-            #    repeat_cnt = (repeat_cnt + 1) % 3
-            #    obs = env._relative_dict_to_list(obs)
-            #    print(obs)
-            #    if done:
-            #        obs = client.env_reset()
-            #        repeat_cnt = 0
-            #        if not obs:
-            #            break
-            #        obs = env._relative_dict_to_list(obs)
-            #client.submit()
-
-            # local prediction
-            done = False
-            episode_rwd = .0
-            obs = env.reset()
-
-            while not done:
+            client = Client(remote_base)
+            obs = client.env_create(crowdai_token, env_id='ProstheticsEnv')
+            obs = env._relative_dict_to_list(obs)
+            while True:
                 act = session.run(learner.output_actions, feed_dict={
                     learner.cur_observations: [obs],
                     learner.stochastic: False,
                     learner.eps: .0})[0]
-                #q = session.run(learner.q_value_tensor, feed_dict={
-                #    learner.obs_t: [obs],
-                #    learner.act_t: [act]})
-                obs, rwd, done, _ = env.step(act)
-                episode_rwd += rwd
+                [obs, reward, done, info] = client.env_step(act.tolist(), True)
+                obs = env._relative_dict_to_list(obs)
+                if done:
+                    obs = client.env_reset()
+                    if not obs:
+                        break
+                    obs = env._relative_dict_to_list(obs)
+            client.submit()
 
-            print(episode_rwd)
+            # repeat actions
+            client = Client(remote_base)
+            obs = client.env_create(crowdai_token, env_id='ProstheticsEnv')
+            obs = env._relative_dict_to_list(obs)
+            repeat_cnt = 0
+            act = None
 
+            while True:
+                if repeat_cnt == 0:
+                    act = session.run(learner.output_actions, feed_dict={
+                        learner.cur_observations: [obs],
+                        learner.stochastic: False,
+                        learner.eps: .0})[0]
+                [obs, reward, done, info] = client.env_step(act.tolist(), True)
+                repeat_cnt = (repeat_cnt + 1) % 3
+                obs = env._relative_dict_to_list(obs)
+                if done:
+                    obs = client.env_reset()
+                    repeat_cnt = 0
+                    if not obs:
+                        break
+                    obs = env._relative_dict_to_list(obs)
+            client.submit()
 
     print("done.")
 
