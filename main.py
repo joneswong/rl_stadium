@@ -12,7 +12,7 @@ import tensorflow as tf
 import gym
 from osim.env import ProstheticsEnv
 from search_ranking_gym_env import GoodStuffEpisodicEnv
-from env import wrap_opensim
+from env import wrap_opensim, wrap_round2_opensim
 from ddpg_agent import DDPGPolicyGraph
 from replay_buffer import PrioritizedReplayBuffer
 
@@ -57,6 +57,9 @@ def get_env(env_name):
     elif env_name == "prosthetics":
         env = ProstheticsEnv(False)
         return wrap_opensim(env)
+    elif env_name == "round2":
+        env = ProstheticsEnv(False, difficulty=1)
+        return wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), random_start=AGENT_CONFIG.get("random_start", True))
     elif env_name == "sr":
         return GoodStuffEpisodicEnv({
             "input_path": "/gruntdata/app_data/jones.wz/rl/search_ranking/A3gent/search_ranking/episodic_data.tsv",
@@ -192,9 +195,9 @@ def main(_):
         server.target,
         is_chief=is_learner,
         checkpoint_dir='tmp',
-        save_checkpoint_secs=18000 if AGENT_CONFIG["env"] == "prosthetics" else 600,
-        save_summaries_secs=18000 if AGENT_CONFIG["env"] == "prosthetics" else 120,
-        log_step_count_steps=500000 if AGENT_CONFIG["env"] == "prosthetics" else 1000,
+        save_checkpoint_secs=9000 if AGENT_CONFIG["env"] in ["prosthetics", "round2"] else 600,
+        save_summaries_secs=9000 if AGENT_CONFIG["env"] == ["prosthetics", "round2"] else 120,
+        log_step_count_steps=250000 if AGENT_CONFIG["env"] == ["prosthetics", "round2"] else 1000,
         config=tf.ConfigProto(allow_soft_placement=True)) as session:
 
         if is_learner:
@@ -231,7 +234,7 @@ def main(_):
             metrics_collecter.start()
             if AGENT_CONFIG["env"] == "pendulum":
                 least_considered = 16
-            elif AGENT_CONFIG["env"] == "prosthetics":
+            elif AGENT_CONFIG["env"] in ["prosthetics", "round2"]:
                 least_considered = num_actors
             elif AGENT_CONFIG["env"] == "sr":
                 least_considered = 2048
@@ -242,14 +245,20 @@ def main(_):
             training_batch_cnt = 0
             last_target_update_iter = 0
             num_target_update = 0
+            use_lr_decay = AGENT_CONFIG["lr_decay"]
             init_actor_lr = AGENT_CONFIG["actor_lr"]
             init_critic_lr = AGENT_CONFIG["critic_lr"]
             losses = list()
             start_time = time.time()
 
             while True:
-                cur_actor_lr = 5e-5 + max(.0, 2e6-training_batch_cnt)/(2e6) * (init_actor_lr - 5e-5)
-                cur_critic_lr = 5e-5 + max(.0, 2e6-training_batch_cnt)/(2e6) * (init_critic_lr - 5e-5)
+                if use_lr_decay:
+                    cur_actor_lr = init_actor_lr
+                    cur_critic_lr = init_critic_lr
+                else:
+                    cur_actor_lr = 5e-5 + max(.0, 2e6-training_batch_cnt)/(2e6) * (init_actor_lr - 5e-5)
+                    cur_critic_lr = 5e-5 + max(.0, 2e6-training_batch_cnt)/(2e6) * (init_critic_lr - 5e-5)
+
                 for i in range(REPLAY_REPLICA):
                     if not data_outs[i].empty():
                         (obses_t, actions, rewards, obses_tp1, dones, weights, batch_indexes) = data_outs[i].get()
