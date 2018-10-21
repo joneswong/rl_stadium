@@ -252,7 +252,7 @@ def main(_):
             start_time = time.time()
 
             while True:
-                if use_lr_decay:
+                if not use_lr_decay:
                     cur_actor_lr = init_actor_lr
                     cur_critic_lr = init_critic_lr
                 else:

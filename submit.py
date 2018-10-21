@@ -13,7 +13,7 @@ import gym
 import opensim as osim
 from osim.env import ProstheticsEnv
 
-from env import wrap_opensim
+from env import wrap_opensim, wrap_round2_opensim
 from osim.http.client import Client
 from ddpg_agent import DDPGPolicyGraph
 from replay_buffer import PrioritizedReplayBuffer
@@ -45,8 +45,12 @@ def main(_):
     AGENT_CONFIG.update(specified_configs)
 
     # create environment
-    env = ProstheticsEnv(False)
-    env = wrap_opensim(env, clean=True)
+    if AGENT_CONFIG["env"] == "prosthetics":
+        env = ProstheticsEnv(False)
+        env = wrap_opensim(env, clean=True)
+    elif AGENT_CONFIG["env"] == "round2":
+        env = ProstheticsEnv(False, difficulty=1)
+        env = wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), random_start=AGENT_CONFIG.get("random_start", True), clean=True)
                     
     # create agent (actor and learner)
     is_learner = True
@@ -126,7 +130,10 @@ def main(_):
             print("*************************learner started*************************")
 
             # CrowdAI related
-            remote_base = "http://grader.crowdai.org:1729"
+            if AGENT_CONFIG["env"] == "prosthetics":
+                remote_base = "http://grader.crowdai.org:1729"
+            elif AGENT_CONFIG["env"] == "round2":
+                remote_base = "http://grader.crowdai.org:1730"
             crowdai_token = "cf7b1cba79e1d4444bfcc3bb0024a8f7"
 
             client = Client(remote_base)

@@ -13,7 +13,7 @@ import gym
 import opensim as osim
 from osim.env import ProstheticsEnv
 from search_ranking_gym_env import GoodStuffEpisodicEnv
-from env import wrap_opensim
+from env import wrap_opensim, wrap_round2_opensim
 from osim.http.client import Client
 from ddpg_agent import DDPGPolicyGraph
 from replay_buffer import PrioritizedReplayBuffer
@@ -52,6 +52,9 @@ def main(_):
     elif AGENT_CONFIG["env"] == "prosthetics":
         env = ProstheticsEnv(False)
         env = wrap_opensim(env, clean=True, repeat=FLAGS.repeat)
+    elif AGENT_CONFIG["env"] == "round2":
+        env = ProstheticsEnv(False, difficulty=1)
+        env = wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), random_start=AGENT_CONFIG.get("random_start", True), clean=True)
     elif AGENT_CONFIG["env"] == "sr":
         env = GoodStuffEpisodicEnv({
             "input_path": "/gruntdata/app_data/jones.wz/rl/search_ranking/A3gent/search_ranking/episodic_data.tsv",
