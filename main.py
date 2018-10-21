@@ -55,10 +55,12 @@ def get_env(env_name):
     if env_name == "pendulum":
         return gym.make("Pendulum-v0")
     elif env_name == "prosthetics":
-        env = ProstheticsEnv(False)
+        np.random.seed(FLAGS.task_index)
+        env = ProstheticsEnv(False, seed=FLAGS.task_index)
         return wrap_opensim(env)
     elif env_name == "round2":
-        env = ProstheticsEnv(False, difficulty=1)
+        np.random.seed(FLAGS.task_index)
+        env = ProstheticsEnv(False, difficulty=1, seed=FLAGS.task_index)
         return wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), random_start=AGENT_CONFIG.get("random_start", True))
     elif env_name == "sr":
         return GoodStuffEpisodicEnv({

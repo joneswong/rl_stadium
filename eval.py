@@ -54,7 +54,7 @@ def main(_):
         env = wrap_opensim(env, clean=True, repeat=FLAGS.repeat)
     elif AGENT_CONFIG["env"] == "round2":
         env = ProstheticsEnv(False, difficulty=1)
-        env = wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), random_start=AGENT_CONFIG.get("random_start", True), clean=True)
+        env = wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), random_start=False, clean=True)
     elif AGENT_CONFIG["env"] == "sr":
         env = GoodStuffEpisodicEnv({
             "input_path": "/gruntdata/app_data/jones.wz/rl/search_ranking/A3gent/search_ranking/episodic_data.tsv",

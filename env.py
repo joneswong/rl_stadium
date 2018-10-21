@@ -519,8 +519,8 @@ class Round2WalkingEnv(gym.Wrapper):
 
         # distance between left and right foot
         distance = (observation["body_pos"]["pros_foot_r"][0] - observation["body_pos"]["calcn_l"][0])**2 + (observation["body_pos"]["pros_foot_r"][2] - observation["body_pos"]["calcn_l"][2])**2
-        if distance > 0.4:
-            pe += 5.0 * (distance - 0.4)
+        if distance > 0.5:
+            pe += 5.0 * (distance - 0.5)
 
         # cross leg
         theta = observation["body_pos_rot"]["pelvis"][1]
@@ -534,6 +534,12 @@ class Round2WalkingEnv(gym.Wrapper):
         cross_leg_pe_l = max(ip_l-.0, .0)
         pe += 8 * (cross_leg_pe_r + cross_leg_pe_l)
 
+        # heading towards target velocity
+        pt = observation['body_pos_rot']['pelvis'][1]
+        target_vx = observation['target_vel'][0]
+        target_vz = observation['target_vel'][2]
+        pe += 2 * (1 - (np.cos(pt)*target_vx - np.sin(pt)*target_vz) / np.sqrt(target_vx**2 + target_vz**2))
+        
         done = observation['body_pos']['pelvis'][1] <= 0.65
 
         return pe, done
