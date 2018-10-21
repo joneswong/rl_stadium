@@ -247,7 +247,7 @@ def main(_):
             training_batch_cnt = 0
             last_target_update_iter = 0
             num_target_update = 0
-            use_lr_decay = AGENT_CONFIG["lr_decay"]
+            use_lr_decay = AGENT_CONFIG.get("lr_decay", False)
             init_actor_lr = AGENT_CONFIG["actor_lr"]
             init_critic_lr = AGENT_CONFIG["critic_lr"]
             losses = list()
@@ -258,8 +258,8 @@ def main(_):
                     cur_actor_lr = init_actor_lr
                     cur_critic_lr = init_critic_lr
                 else:
-                    cur_actor_lr = 5e-5 + max(.0, 2e6-training_batch_cnt)/(2e6) * (init_actor_lr - 5e-5)
-                    cur_critic_lr = 5e-5 + max(.0, 2e6-training_batch_cnt)/(2e6) * (init_critic_lr - 5e-5)
+                    cur_actor_lr = 5e-5 + max(.0, 1e7-training_batch_cnt)/(1e7) * (init_actor_lr - 5e-5)
+                    cur_critic_lr = 5e-5 + max(.0, 1e7-training_batch_cnt)/(1e7) * (init_critic_lr - 5e-5)
 
                 for i in range(REPLAY_REPLICA):
                     if not data_outs[i].empty():

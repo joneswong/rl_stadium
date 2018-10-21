@@ -39,7 +39,7 @@
     "l2_reg": 1e-6,
     "grad_norm_clipping": 40.0,
     "learning_starts": 100000,
-    "train_batch_size": 256,
+    "train_batch_size": 512,
     "sample_batch_size": 25,
     "max_weight_sync_delay": 50,
     "stop_criteria": 10000
