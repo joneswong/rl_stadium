@@ -50,10 +50,12 @@ def main(_):
     if AGENT_CONFIG["env"] == "pendulum":
         env = gym.make("Pendulum-v0")
     elif AGENT_CONFIG["env"] == "prosthetics":
-        env = ProstheticsEnv(False)
+        np.random.seed(int(time.time()))
+        env = ProstheticsEnv(False, seed=time.time())
         env = wrap_opensim(env, clean=True, repeat=FLAGS.repeat)
     elif AGENT_CONFIG["env"] == "round2":
-        env = ProstheticsEnv(False, difficulty=1)
+        np.random.seed(int(time.time()))
+        env = ProstheticsEnv(False, difficulty=1, seed=time.time())
         env = wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), random_start=False, clean=True)
     elif AGENT_CONFIG["env"] == "sr":
         env = GoodStuffEpisodicEnv({

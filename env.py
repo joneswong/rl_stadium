@@ -636,13 +636,15 @@ class Round2WalkingEnv(gym.Wrapper):
         heading = np.zeros(nsteps)
 
         if self._random_start:
-            starting_choice = random.choice([0, 1])
-            if starting_choice > 0:
-                velocity[0] = random.uniform(1.0, 1.5)
-                heading[0] = random.uniform(-math.pi/8, math.pi/8)
-            else:
-                velocity[0] = 1.25
-                heading[0] = 0
+            #starting_choice = random.choice([0, 1])
+            #if starting_choice > 0:
+            #    velocity[0] = random.uniform(1.0, 1.5)
+            #    heading[0] = random.uniform(-math.pi/8, math.pi/8)
+            #else:
+            #    velocity[0] = 1.25
+            #    heading[0] = 0
+            velocity[0] = random.uniform(1.0, 1.5)
+            heading[0] = random.uniform(-math.pi/8, math.pi/8)
         else:
             velocity[0] = 1.25
             heading[0] = 0
