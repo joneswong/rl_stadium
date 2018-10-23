@@ -538,7 +538,10 @@ class Round2WalkingEnv(gym.Wrapper):
         pt = observation['body_pos_rot']['pelvis'][1]
         target_vx = observation['target_vel'][0]
         target_vz = observation['target_vel'][2]
-        pe += 2 * (1 - (np.cos(pt)*target_vx - np.sin(pt)*target_vz) / np.sqrt(target_vx**2 + target_vz**2))
+        pe += 20 * (1 - (np.cos(pt)*target_vx - np.sin(pt)*target_vz) / np.sqrt(target_vx**2 + target_vz**2))
+
+        # do NOT jump
+        pe += 10 * max(.0, min(observation['body_pos']['pros_foot_r'][1], observation['body_pos']['calcn_l'][1], observation['body_pos']['toes_l'][1]))
         
         done = observation['body_pos']['pelvis'][1] <= 0.65
 
@@ -678,6 +681,8 @@ class Round2CleanEnv(gym.Wrapper):
         self._random_start = random_start
     
     def _relative_dict_to_list(self, observation):
+        
+
         res = []
 
         pelvs = {
