@@ -59,8 +59,8 @@ def get_env(env_name):
         env = ProstheticsEnv(False, seed=FLAGS.task_index)
         return wrap_opensim(env)
     elif env_name == "round2":
-        np.random.seed(FLAGS.task_index)
-        env = ProstheticsEnv(False, difficulty=1, seed=FLAGS.task_index)
+        np.random.seed(101+FLAGS.task_index)
+        env = ProstheticsEnv(False, difficulty=1, seed=997+FLAGS.task_index)
         return wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), random_start=AGENT_CONFIG.get("random_start", True))
     elif env_name == "sr":
         return GoodStuffEpisodicEnv({

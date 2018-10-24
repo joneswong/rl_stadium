@@ -145,7 +145,11 @@ def main(_):
             
             done = False
             episode_rwd = .0
+            episode_len = 0
             obs = env.reset()
+            if AGENT_CONFIG["env"] == "round2":
+                prev_target_vx = obs[0]
+                prev_target_vz = obs[2]
 
             while not done:
                 act = session.run(learner.output_actions, feed_dict={
@@ -157,9 +161,14 @@ def main(_):
                 #    learner.act_t: [act]})
                 obs, rwd, done, _ = env.step(act)
                 episode_rwd += rwd
-                print(episode_rwd)
+                episode_len += 1
+                print("{}".format(rwd))
+                if AGENT_CONFIG["env"] == "round2" and obs[0] != prev_target_vx or obs[2] != prev_target_vz:
+                    prev_target_vx = obs[0]
+                    prev_target_vz = obs[2]
+                    print(">>>>>>>>>>>>>>>>>>>>>>> Turn to {}\t{} at {} timestep".format(prev_target_vx, prev_target_vz, 3*episode_len))
 
-            print(episode_rwd)
+            print("{}\t{}".format(episode_rwd, episode_len))
 
     print("done.")
 
