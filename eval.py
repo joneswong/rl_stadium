@@ -135,7 +135,9 @@ def main(_):
         save_checkpoint_secs=180,
         save_summaries_secs=180,
         log_step_count_steps=2000,
-        config=tf.ConfigProto(allow_soft_placement=True)) as session:
+        config=tf.ConfigProto(
+            allow_soft_placement=True,
+            log_device_placement=True)) as session:
 
         if is_learner:
             print("*************************learner started*************************")

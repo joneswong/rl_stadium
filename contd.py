@@ -201,7 +201,9 @@ def main(_):
         save_checkpoint_secs=9000 if AGENT_CONFIG["env"] in ["prosthetics", "round2"] else 600,
         save_summaries_secs=9000 if AGENT_CONFIG["env"] == ["prosthetics", "round2"] else 120,
         log_step_count_steps=250000 if AGENT_CONFIG["env"] == ["prosthetics", "round2"] else 1000,
-        config=tf.ConfigProto(allow_soft_placement=True)) as session:
+        config=tf.ConfigProto(
+            allow_soft_placement=True,
+            log_device_placement=True)) as session:
 
         if is_learner:
             print("*************************learner started*************************")
