@@ -681,7 +681,7 @@ class Round2CleanEnv(gym.Wrapper):
         self._random_start = random_start
     
     def _relative_dict_to_list(self, observation):
-        
+        print("{}\t{}".format(observation['body_vel']['pelvis'][0], observation['body_vel']['pelvis'][2]))
 
         res = []
 

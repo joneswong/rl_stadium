@@ -137,7 +137,7 @@ def main(_):
         log_step_count_steps=2000,
         config=tf.ConfigProto(
             allow_soft_placement=True,
-            log_device_placement=True)) as session:
+            log_device_placement=False)) as session:
 
         if is_learner:
             print("*************************learner started*************************")
@@ -150,6 +150,11 @@ def main(_):
             if AGENT_CONFIG["env"] == "round2":
                 prev_target_vx = obs[0]
                 prev_target_vz = obs[2]
+            for var in learner.p_func_vars+learner.a_func_vars+learner.target_p_func_vars+learner.q_func_vars+learner.target_q_func_vars:
+                print(var.name)
+                print(var.shape)
+                print(np.mean(np.abs(var.eval(session=session))))
+                input()
 
             while not done:
                 act = session.run(learner.output_actions, feed_dict={
