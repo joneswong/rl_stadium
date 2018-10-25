@@ -248,11 +248,13 @@ def main(_):
             session.run(learner.update_target_expr)
             training_batch_cnt = 0
             train_batch_size = AGENT_CONFIG["train_batch_size"]
+            sample_batch_size = AGENT_CONFIG["sample_batch_size"]
             last_target_update_iter = 0
             num_target_update = 0
             use_lr_decay = AGENT_CONFIG.get("lr_decay", False)
             init_actor_lr = AGENT_CONFIG["actor_lr"]
             init_critic_lr = AGENT_CONFIG["critic_lr"]
+            num_sampled_timestep = 0
             losses = list()
             start_time = time.time()
 
@@ -261,8 +263,8 @@ def main(_):
                     cur_actor_lr = init_actor_lr
                     cur_critic_lr = init_critic_lr
                 else:
-                    cur_actor_lr = 5e-5 + max(.0, 1e7-train_batch_size*training_batch_cnt)/(1e7) * (init_actor_lr - 5e-5)
-                    cur_critic_lr = 5e-5 + max(.0, 1e7-train_batch_size*training_batch_cnt)/(1e7) * (init_critic_lr - 5e-5)
+                    cur_actor_lr = 5e-5 + max(.0, 1e7-num_sampled_timestep)/(1e7) * (init_actor_lr - 5e-5)
+                    cur_critic_lr = 5e-5 + max(.0, 1e7-num_sampled_timestep)/(1e7) * (init_critic_lr - 5e-5)
 
                 for i in range(REPLAY_REPLICA):
                     if not data_outs[i].empty():
@@ -296,7 +298,8 @@ def main(_):
                     perf = np.mean(metrics[-least_considered:])
                     print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
                     print("mean_episodes_reward={}".format(perf))
-                    print("num_sampled_timestep={}".format(np.sum([t.sampled_batch_cnt for t in op_runners]) * AGENT_CONFIG["sample_batch_size"]))
+                    num_sampled_timestep = np.sum([t.sampled_batch_cnt for t in op_runners]) * sample_batch_size
+                    print("num_sampled_timestep={}".format(num_sampled_timestep))
                     print("num_train_timestep={}".format(training_batch_cnt * train_batch_size))
                     print("num_target_sync={}".format(num_target_update))
                     print("current_actor_lr={}".format(cur_actor_lr))
