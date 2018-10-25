@@ -638,16 +638,15 @@ class Round2WalkingEnv(gym.Wrapper):
         velocity = np.zeros(nsteps)
         heading = np.zeros(nsteps)
 
-        if self._random_start:
-            #starting_choice = random.choice([0, 1])
-            #if starting_choice > 0:
-            #    velocity[0] = random.uniform(1.0, 1.5)
-            #    heading[0] = random.uniform(-math.pi/8, math.pi/8)
-            #else:
-            #    velocity[0] = 1.25
-            #    heading[0] = 0
-            velocity[0] = random.uniform(1.0, 1.5)
-            heading[0] = random.uniform(-math.pi/8, math.pi/8)
+        if self._random_start > 0:
+            ch = np.random.randint(0, self._random_start)
+            if ch == 0:
+                velocity[0] = 1.25
+                heading[0] = 0
+            else:
+                velocity[0] = random.uniform(1.0, 1.5)
+                heading[0] = random.uniform(-math.pi/8, math.pi/8)
+            self._random_start -= 1
         else:
             velocity[0] = 1.25
             heading[0] = 0
@@ -664,6 +663,25 @@ class Round2WalkingEnv(gym.Wrapper):
 
         trajectory_polar = np.vstack((velocity,heading)).transpose()
         self.targets = np.apply_along_axis(rect, 1, trajectory_polar)
+
+    def reward_round2(self):
+        """
+        Override to increase the impact of velocity residual
+        """
+        state_desc = self.get_state_desc()
+        prev_state_desc = self.get_prev_state_desc()
+        # Small penalty for too much activation (cost of transport)
+        penalty = np.sum(np.array(self.osim_model.get_activations())**2) * 0.001
+
+        # Big penalty for not matching the vector on the X,Z projection.
+        # No penalty for the vertical axis
+        penalty += 5.0*(state_desc["body_vel"]["pelvis"][0] - state_desc["target_vel"][0])**2
+        penalty += 5.0*(state_desc["body_vel"]["pelvis"][2] - state_desc["target_vel"][2])**2
+        
+        # Reward for not falling
+        reward = 10.0
+        
+        return reward - penalty 
 
     def reset(self, **kwargs):
         return self._relative_dict_to_list(self.env.reset(project=False, **kwargs))

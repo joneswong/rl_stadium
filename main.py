@@ -61,7 +61,7 @@ def get_env(env_name):
     elif env_name == "round2":
         np.random.seed(FLAGS.task_index)
         env = ProstheticsEnv(False, difficulty=1, seed=FLAGS.task_index)
-        return wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), random_start=AGENT_CONFIG.get("random_start", True))
+        return wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), random_start=AGENT_CONFIG.get("random_start", 0))
     elif env_name == "sr":
         return GoodStuffEpisodicEnv({
             "input_path": "/gruntdata/app_data/jones.wz/rl/search_ranking/A3gent/search_ranking/episodic_data.tsv",
@@ -247,6 +247,7 @@ def main(_):
             # begin training
             session.run(learner.update_target_expr)
             training_batch_cnt = 0
+            train_batch_size = AGENT_CONFIG["train_batch_size"]
             last_target_update_iter = 0
             num_target_update = 0
             use_lr_decay = AGENT_CONFIG.get("lr_decay", False)
@@ -260,8 +261,8 @@ def main(_):
                     cur_actor_lr = init_actor_lr
                     cur_critic_lr = init_critic_lr
                 else:
-                    cur_actor_lr = 5e-5 + max(.0, 1e7-training_batch_cnt)/(1e7) * (init_actor_lr - 5e-5)
-                    cur_critic_lr = 5e-5 + max(.0, 1e7-training_batch_cnt)/(1e7) * (init_critic_lr - 5e-5)
+                    cur_actor_lr = 5e-5 + max(.0, 1e7-train_batch_size*training_batch_cnt)/(1e7) * (init_actor_lr - 5e-5)
+                    cur_critic_lr = 5e-5 + max(.0, 1e7-train_batch_size*training_batch_cnt)/(1e7) * (init_critic_lr - 5e-5)
 
                 for i in range(REPLAY_REPLICA):
                     if not data_outs[i].empty():
@@ -296,7 +297,7 @@ def main(_):
                     print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
                     print("mean_episodes_reward={}".format(perf))
                     print("num_sampled_timestep={}".format(np.sum([t.sampled_batch_cnt for t in op_runners]) * AGENT_CONFIG["sample_batch_size"]))
-                    print("num_train_timestep={}".format(training_batch_cnt * AGENT_CONFIG["train_batch_size"]))
+                    print("num_train_timestep={}".format(training_batch_cnt * train_batch_size))
                     print("num_target_sync={}".format(num_target_update))
                     print("current_actor_lr={}".format(cur_actor_lr))
                     print("current_critic_lr={}".format(cur_critic_lr))
