@@ -1,9 +1,75 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import operator
+import random, math
+from collections import deque
 import numpy as np
 import gym
 from gym import spaces
 #import cv2
 #cv2.ocl.setUseOpenCL(False)
+
+from osim.env import ProstheticsEnv, rect
+
+
+class CustomizedProstheticsEnv(ProstheticsEnv):
+    def __init__(self, visualize=True, integrator_accuracy=5e-5, difficulty=0, seed=0, random_start=0):
+        super(CustomizedProstheticsEnv, self).__init__(visualize=visualize, integrator_accuracy=integrator_accuracy, difficulty=difficulty, seed=seed)
+        self._random_start = random_start
+        np.random.seed(int(seed))
+
+    def generate_new_targets(self, poisson_lambda = 300):
+        nsteps = self.time_limit + 1
+        rg = np.array(range(nsteps))
+        velocity = np.zeros(nsteps)
+        heading = np.zeros(nsteps)
+
+        if self._random_start > 0:
+            ch = np.random.randint(0, self._random_start)
+            if ch == 0:
+                velocity[0] = 1.25
+                heading[0] = 0
+            else:
+                velocity[0] = random.uniform(1.0, 1.5)
+                heading[0] = random.uniform(-math.pi/8, math.pi/8)
+            self._random_start -= 1
+        else:
+            velocity[0] = 1.25
+            heading[0] = 0
+
+        change = np.cumsum(np.random.poisson(poisson_lambda, 10))
+
+        for i in range(1,nsteps):
+            velocity[i] = velocity[i-1]
+            heading[i] = heading[i-1]
+
+            if i in change:
+                velocity[i] += random.choice([-1,1]) * random.uniform(-0.5,0.5)
+                heading[i] += random.choice([-1,1]) * random.uniform(-math.pi/8,math.pi/8)
+
+        trajectory_polar = np.vstack((velocity,heading)).transpose()
+        self.targets = np.apply_along_axis(rect, 1, trajectory_polar)
+
+    def reward_round2(self):
+        """
+        Override to increase the impact of velocity residual
+        """
+        state_desc = self.get_state_desc()
+        prev_state_desc = self.get_prev_state_desc()
+        # Small penalty for too much activation (cost of transport)
+        penalty = np.sum(np.array(self.osim_model.get_activations())**2) * 0.001
+
+        # Big penalty for not matching the vector on the X,Z projection.
+        # No penalty for the vertical axis
+        penalty += 3.0*(state_desc["body_vel"]["pelvis"][0] - state_desc["target_vel"][0])**2
+        penalty += 3.0*(state_desc["body_vel"]["pelvis"][2] - state_desc["target_vel"][2])**2
+        
+        # Reward for not falling
+        reward = 10.0
+        
+        return reward - penalty
 
 
 class WalkingEnv(gym.Wrapper):
@@ -474,15 +540,17 @@ def wrap_opensim(env, contd=False, clean=False, repeat=3):
 
 
 class Round2WalkingEnv(gym.Wrapper):
-    def __init__(self, env, skip=3, random_start=True):
+    def __init__(self, env, skip=3, use_hcf=False):
         """
         add 1 to original reward for each timestep except for the terminal one
         repeat an action for 4 timesteps
         """
         gym.Wrapper.__init__(self, env)
-        self.observation_space.shape = (223,)
+        self._use_hcf = use_hcf
+        self.observation_space.shape = (238 if use_hcf else 223,)
         self._skip = skip
-        self._random_start = random_start
+        if use_hcf:
+            self.frames = deque([], maxlen=self._skip)
 
     def _penalty(self, observation):
         x_head_pelvis = observation['body_pos']['head'][0]-observation['body_pos']['pelvis'][0]
@@ -547,8 +615,40 @@ class Round2WalkingEnv(gym.Wrapper):
 
         return pe, done
 
+    def _engineer_features(self, obs):
+        vectors = list()
+
+        # target velocity
+        vectors.append((obs["target_vel"][0], obs["target_vel"][2]))
+
+        # current velocity
+        vectors.append((obs["body_vel"]["pelvis"][0], obs["body_vel"]["pelvis"][2]))
+
+        # moving averaged velocity
+        vectors.append(np.mean(list(self.frames), axis=0))
+
+        # pelvis orientation as unit vector
+        pelvis_pos_x, pelvis_pos_z = obs["body_pos"]["pelvis"][0], obs["body_pos"]["pelvis"][2]
+        pelvis_orientation = obs['body_pos_rot']['pelvis'][1]
+        vectors.append((np.cos(pelvis_orientation), -np.sin(pelvis_orientation)))
+        
+        # right foot position w.r.t. pelvis position
+        vectors.append((obs["body_pos"]["pros_foot_r"][0]-pelvis_pos_x, obs["body_pos"]["pros_foot_r"][2]-pelvis_pos_z))
+
+        # left foot position w.r.t. pelvis position
+        vectors.append((0.5*(obs["body_pos"]["calcn_l"][0]+obs["body_pos"]["toes_l"][0])-pelvis_pos_x, 0.5*(obs["body_pos"]["calcn_l"][2]+obs["body_pos"]["toes_l"][2])-pelvis_pos_z))
+
+        features = list()
+        for i in range(len(vectors)):
+            for j in range(i+1, len(vectors)):
+                features.append(vectors[i][0]*vectors[j][0]+vectors[i][1]*vectors[j][1])
+        return features
+        
     def _relative_dict_to_list(self, observation):
-        res = []
+        if self._use_hcf:
+            res = self._engineer_features(observation)
+        else:
+            res = []
 
         pelvs = {
             'body_pos': observation['body_pos']['pelvis'],
@@ -556,7 +656,7 @@ class Round2WalkingEnv(gym.Wrapper):
             #'body_acc': list(map(lambda v: v/100.0, observation['body_acc']['pelvis']))
         }
 
-        res += pelvs['body_pos']#res = [pelvis_pos_x, y, z]
+        res += [observation["target_vel"][0], pelvs['body_pos'][1], observation["target_vel"][2]]
         res += pelvs['body_vel']
         #res += pelvs['body_acc']
 
@@ -615,8 +715,6 @@ class Round2WalkingEnv(gym.Wrapper):
             res.append(observation['muscles'][muscle]['fiber_length'])
             res.append(observation['muscles'][muscle]['fiber_velocity'])
 
-        res[0] = observation['target_vel'][0]
-        res[2] = observation['target_vel'][2]
         return res
     
     def step(self, ac):
@@ -624,6 +722,8 @@ class Round2WalkingEnv(gym.Wrapper):
         done = None
         for i in range(self._skip):
             obs, reward, done, info = self.env.step(ac, False)
+            if self._use_hcf:
+                self.frames.append([obs["body_vel"]["pelvis"][0], obs["body_vel"]["pelvis"][2]])
             penalty, strong_done = self._penalty(obs)
             done = done if done else strong_done
             total_reward += (reward if done else reward+1.0) - penalty
@@ -632,76 +732,123 @@ class Round2WalkingEnv(gym.Wrapper):
 
         return self._relative_dict_to_list(obs), total_reward, done, info
 
-    def generate_new_targets(self, poisson_lambda = 300):
-        nsteps = self.time_limit + 1
-        rg = np.array(range(nsteps))
-        velocity = np.zeros(nsteps)
-        heading = np.zeros(nsteps)
-
-        if self._random_start > 0:
-            ch = np.random.randint(0, self._random_start)
-            if ch == 0:
-                velocity[0] = 1.25
-                heading[0] = 0
-            else:
-                velocity[0] = random.uniform(1.0, 1.5)
-                heading[0] = random.uniform(-math.pi/8, math.pi/8)
-            self._random_start -= 1
-        else:
-            velocity[0] = 1.25
-            heading[0] = 0
-
-        change = np.cumsum(np.random.poisson(poisson_lambda, 10))
-
-        for i in range(1,nsteps):
-            velocity[i] = velocity[i-1]
-            heading[i] = heading[i-1]
-
-            if i in change:
-                velocity[i] += random.choice([-1,1]) * random.uniform(-0.5,0.5)
-                heading[i] += random.choice([-1,1]) * random.uniform(-math.pi/8,math.pi/8)
-
-        trajectory_polar = np.vstack((velocity,heading)).transpose()
-        self.targets = np.apply_along_axis(rect, 1, trajectory_polar)
-
-    def reward_round2(self):
-        """
-        Override to increase the impact of velocity residual
-        """
-        state_desc = self.get_state_desc()
-        prev_state_desc = self.get_prev_state_desc()
-        # Small penalty for too much activation (cost of transport)
-        penalty = np.sum(np.array(self.osim_model.get_activations())**2) * 0.001
-
-        # Big penalty for not matching the vector on the X,Z projection.
-        # No penalty for the vertical axis
-        penalty += 5.0*(state_desc["body_vel"]["pelvis"][0] - state_desc["target_vel"][0])**2
-        penalty += 5.0*(state_desc["body_vel"]["pelvis"][2] - state_desc["target_vel"][2])**2
-        
-        # Reward for not falling
-        reward = 10.0
-        
-        return reward - penalty 
-
     def reset(self, **kwargs):
-        return self._relative_dict_to_list(self.env.reset(project=False, **kwargs))
+        ob = self.env.reset(project=False, **kwargs)
+        if self._use_hcf:
+            for _ in range(self._skip -1):
+                self.frames.append(np.zeros(2, dtype="float32"))
+            self.frames.append([ob["body_vel"]["pelvis"][0], ob["body_vel"]["pelvis"][2]])
+        return self._relative_dict_to_list(ob)
 
 
 class Round2CleanEnv(gym.Wrapper):
-    def __init__(self, env, skip=3, random_start=True):
+    def __init__(self, env, skip=3):
         """
         add 1 to original reward for each timestep except for the terminal one
         repeat an action for 4 timesteps
         """
         gym.Wrapper.__init__(self, env)
-        self.observation_space.shape = (223,)
+        self.observation_space.shape = (238,)
         self._skip = skip
-        self._random_start = random_start
-    
-    def _relative_dict_to_list(self, observation):
-        print("{}\t{}".format(observation['body_vel']['pelvis'][0], observation['body_vel']['pelvis'][2]))
+        self.frames = deque([], maxlen=self._skip)
 
-        res = []
+    def _penalty(self, observation):
+        x_head_pelvis = observation['body_pos']['head'][0]-observation['body_pos']['pelvis'][0]
+
+        # height from pelvis to head is around 0.62
+        # consider 0.62 * cos(60) first
+        # consider 0.62 / sqrt(2) later
+        accept_x1 = -0.31
+        accept_x2 = 0.31
+        if x_head_pelvis < accept_x1:
+            pe = .667
+            #pe = 5.0
+            #done = True
+        elif x_head_pelvis < accept_x2:
+            pe = 0.0
+            #done = False
+        else:
+            pe = 0.667
+            #done = False
+
+        z_head_pelvis = observation['body_pos']['head'][2]-observation['body_pos']['pelvis'][2]
+        accept_z1 = -0.31
+        accept_z2 = 0.31
+        if z_head_pelvis < accept_z1:
+            pe += 0.667
+            #pe += 5.0
+            #done = True
+        elif z_head_pelvis < accept_z2:
+            pass
+        else:
+            pe += 0.667
+            #pe += 5.0
+            #done = True
+
+        # distance between left and right foot
+        distance = (observation["body_pos"]["pros_foot_r"][0] - observation["body_pos"]["calcn_l"][0])**2 + (observation["body_pos"]["pros_foot_r"][2] - observation["body_pos"]["calcn_l"][2])**2
+        if distance > 0.5:
+            pe += 5.0 * (distance - 0.5)
+
+        # cross leg
+        theta = observation["body_pos_rot"]["pelvis"][1]
+        cos_theta, sin_theta = np.cos(theta), np.sin(theta)
+        pelvis_pos_x, pelvis_pos_z = observation['body_pos']['pelvis'][0], observation['body_pos']['pelvis'][2]
+        r_foot_x, r_foot_z =  observation['body_pos']['pros_foot_r'][0]-pelvis_pos_x, observation['body_pos']['pros_foot_r'][2]-pelvis_pos_z
+        ip_r = r_foot_x * sin_theta + r_foot_z * cos_theta
+        cross_leg_pe_r = max(.0-ip_r, .0)
+        l_foot_x, l_foot_z =  observation['body_pos']['calcn_l'][0]-pelvis_pos_x, observation['body_pos']['calcn_l'][2]-pelvis_pos_z
+        ip_l = l_foot_x * sin_theta + l_foot_z * cos_theta
+        cross_leg_pe_l = max(ip_l-.0, .0)
+        pe += 8 * (cross_leg_pe_r + cross_leg_pe_l)
+
+        # heading towards target velocity
+        pt = observation['body_pos_rot']['pelvis'][1]
+        target_vx = observation['target_vel'][0]
+        target_vz = observation['target_vel'][2]
+        pe += 20 * (1 - (np.cos(pt)*target_vx - np.sin(pt)*target_vz) / np.sqrt(target_vx**2 + target_vz**2))
+
+        # do NOT jump
+        pe += 10 * max(.0, min(observation['body_pos']['pros_foot_r'][1], observation['body_pos']['calcn_l'][1], observation['body_pos']['toes_l'][1]))
+        
+        done = observation['body_pos']['pelvis'][1] <= 0.65
+
+        return pe, done
+
+    def _engineer_features(self, obs):
+        vectors = list()
+
+        # target velocity
+        vectors.append((obs["target_vel"][0], obs["target_vel"][2]))
+
+        # current velocity
+        vectors.append((obs["body_vel"]["pelvis"][0], obs["body_vel"]["pelvis"][2]))
+
+        # moving averaged velocity
+        vectors.append(np.mean(list(self.frames), axis=0))
+
+        # pelvis orientation as unit vector
+        pelvis_pos_x, pelvis_pos_z = obs["body_pos"]["pelvis"][0], obs["body_pos"]["pelvis"][2]
+        pelvis_orientation = obs['body_pos_rot']['pelvis'][1]
+        vectors.append((np.cos(pelvis_orientation), -np.sin(pelvis_orientation)))
+        
+        # right foot position w.r.t. pelvis position
+        vectors.append((obs["body_pos"]["pros_foot_r"][0]-pelvis_pos_x, obs["body_pos"]["pros_foot_r"][2]-pelvis_pos_z))
+
+        # left foot position w.r.t. pelvis position
+        vectors.append((0.5*(obs["body_pos"]["calcn_l"][0]+obs["body_pos"]["toes_l"][0])-pelvis_pos_x, 0.5*(obs["body_pos"]["calcn_l"][2]+obs["body_pos"]["toes_l"][2])-pelvis_pos_z))
+
+        print(vectors)
+        input()
+
+        features = list()
+        for i in range(len(vectors)):
+            for j in range(i+1, len(vectors)):
+                features.append(vectors[i][0]*vectors[j][0]+vectors[i][1]*vectors[j][1])
+        return features
+        
+    def _relative_dict_to_list(self, observation):
+        res = self._engineer_features(observation)
 
         pelvs = {
             'body_pos': observation['body_pos']['pelvis'],
@@ -709,7 +856,7 @@ class Round2CleanEnv(gym.Wrapper):
             #'body_acc': list(map(lambda v: v/100.0, observation['body_acc']['pelvis']))
         }
 
-        res += pelvs['body_pos']#res = [pelvis_pos_x, y, z]
+        res += [observation["target_vel"][0], pelvs['body_pos'][1], observation["target_vel"][2]]
         res += pelvs['body_vel']
         #res += pelvs['body_acc']
 
@@ -768,8 +915,6 @@ class Round2CleanEnv(gym.Wrapper):
             res.append(observation['muscles'][muscle]['fiber_length'])
             res.append(observation['muscles'][muscle]['fiber_velocity'])
 
-        res[0] = observation['target_vel'][0]
-        res[2] = observation['target_vel'][2]
         return res
     
     def step(self, ac):
@@ -777,48 +922,25 @@ class Round2CleanEnv(gym.Wrapper):
         done = None
         for i in range(self._skip):
             obs, reward, done, info = self.env.step(ac, False)
+            self.frames.append([obs["body_vel"]["pelvis"][0], obs["body_vel"]["pelvis"][2]])
+            penalty, strong_done = self._penalty(obs)
+            #done = done if done else strong_done
+            #total_reward += (reward if done else reward+1.0) - penalty
             total_reward += reward
             if done:
                 break
 
         return self._relative_dict_to_list(obs), total_reward, done, info
 
-    def generate_new_targets(self, poisson_lambda = 300):
-        nsteps = self.time_limit + 1
-        rg = np.array(range(nsteps))
-        velocity = np.zeros(nsteps)
-        heading = np.zeros(nsteps)
-
-        if self._random_start:
-            starting_choice = random.choice([0, 1])
-            if starting_choice > 0:
-                velocity[0] = random.uniform(1.0, 1.5)
-                heading[0] = random.uniform(-math.pi/8, math.pi/8)
-            else:
-                velocity[0] = 1.25
-                heading[0] = 0
-        else:
-            velocity[0] = 1.25
-            heading[0] = 0
-
-        change = np.cumsum(np.random.poisson(poisson_lambda, 10))
-
-        for i in range(1,nsteps):
-            velocity[i] = velocity[i-1]
-            heading[i] = heading[i-1]
-
-            if i in change:
-                velocity[i] += random.choice([-1,1]) * random.uniform(-0.5,0.5)
-                heading[i] += random.choice([-1,1]) * random.uniform(-math.pi/8,math.pi/8)
-
-        trajectory_polar = np.vstack((velocity,heading)).transpose()
-        self.targets = np.apply_along_axis(rect, 1, trajectory_polar)
-
     def reset(self, **kwargs):
-        return self._relative_dict_to_list(self.env.reset(project=False, **kwargs))
+        for _ in range(self._skip -1):
+            self.frames.append(np.zeros(2, dtype="float32"))
+        ob = self.env.reset(project=False, **kwargs)
+        self.frames.append([ob["body_vel"]["pelvis"][0], ob["body_vel"]["pelvis"][2]])
+        return self._relative_dict_to_list(ob)
 
 
-def wrap_round2_opensim(env, skip=3, random_start=True, clean=False):
+def wrap_round2_opensim(env, skip=3, clean=False):
     if clean:
-        return Round2CleanEnv(env, skip=skip, random_start=random_start)
-    return Round2WalkingEnv(env, skip=skip, random_start=random_start)
+        return Round2CleanEnv(env, skip=skip)
+    return Round2WalkingEnv(env, skip=skip)

@@ -13,7 +13,7 @@ import gym
 import opensim as osim
 from osim.env import ProstheticsEnv
 from search_ranking_gym_env import GoodStuffEpisodicEnv
-from env import wrap_opensim, wrap_round2_opensim
+from env import CustomizedProstheticsEnv, wrap_opensim, wrap_round2_opensim
 from osim.http.client import Client
 from ddpg_agent import DDPGPolicyGraph
 from replay_buffer import PrioritizedReplayBuffer
@@ -54,9 +54,8 @@ def main(_):
         env = ProstheticsEnv(False, seed=time.time())
         env = wrap_opensim(env, clean=True, repeat=FLAGS.repeat)
     elif AGENT_CONFIG["env"] == "round2":
-        np.random.seed(int(time.time()))
-        env = ProstheticsEnv(False, difficulty=1, seed=time.time())
-        env = wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), random_start=False, clean=True)
+        env = CustomizedProstheticsEnv(False, difficulty=1, seed=time.time(), random_start=0)
+        env = wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), clean=True)
     elif AGENT_CONFIG["env"] == "sr":
         env = GoodStuffEpisodicEnv({
             "input_path": "/gruntdata/app_data/jones.wz/rl/search_ranking/A3gent/search_ranking/episodic_data.tsv",
@@ -148,8 +147,8 @@ def main(_):
             episode_len = 0
             obs = env.reset()
             if AGENT_CONFIG["env"] == "round2":
-                prev_target_vx = obs[0]
-                prev_target_vz = obs[2]
+                prev_target_vx = obs[15]
+                prev_target_vz = obs[17]
             for var in learner.p_func_vars+learner.a_func_vars+learner.target_p_func_vars+learner.q_func_vars+learner.target_q_func_vars:
                 print(var.name)
                 print(var.shape)
@@ -168,9 +167,9 @@ def main(_):
                 episode_rwd += rwd
                 episode_len += 1
                 print("{}".format(rwd))
-                if AGENT_CONFIG["env"] == "round2" and obs[0] != prev_target_vx or obs[2] != prev_target_vz:
-                    prev_target_vx = obs[0]
-                    prev_target_vz = obs[2]
+                if AGENT_CONFIG["env"] == "round2" and obs[15] != prev_target_vx or obs[17] != prev_target_vz:
+                    prev_target_vx = obs[15]
+                    prev_target_vz = obs[17]
                     print(">>>>>>>>>>>>>>>>>>>>>>> Turn to {}\t{} at {} timestep".format(prev_target_vx, prev_target_vz, 3*episode_len))
 
             print("{}\t{}".format(episode_rwd, episode_len))

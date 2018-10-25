@@ -12,7 +12,7 @@ import tensorflow as tf
 import gym
 from osim.env import ProstheticsEnv
 from search_ranking_gym_env import GoodStuffEpisodicEnv
-from env import wrap_opensim, wrap_round2_opensim
+from env import CustomizedProstheticsEnv, wrap_opensim, wrap_round2_opensim
 from ddpg_agent import DDPGPolicyGraph
 from replay_buffer import PrioritizedReplayBuffer
 
@@ -59,9 +59,10 @@ def get_env(env_name):
         env = ProstheticsEnv(False, seed=FLAGS.task_index)
         return wrap_opensim(env)
     elif env_name == "round2":
-        np.random.seed(FLAGS.task_index)
-        env = ProstheticsEnv(False, difficulty=1, seed=FLAGS.task_index)
-        return wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), random_start=AGENT_CONFIG.get("random_start", 0))
+        env = CustomizedProstheticsEnv(
+            False, difficulty=1, seed=FLAGS.task_index,
+            random_start=AGENT_CONFIG.get("random_start", 0))
+        return wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3))
     elif env_name == "sr":
         return GoodStuffEpisodicEnv({
             "input_path": "/gruntdata/app_data/jones.wz/rl/search_ranking/A3gent/search_ranking/episodic_data.tsv",
@@ -279,8 +280,8 @@ def main(_):
                     cur_actor_lr = init_actor_lr
                     cur_critic_lr = init_critic_lr
                 else:
-                    cur_actor_lr = 5e-5 + max(.0, 1e7-num_sampled_timestep)/(1e7) * (init_actor_lr - 5e-5)
-                    cur_critic_lr = 5e-5 + max(.0, 1e7-num_sampled_timestep)/(1e7) * (init_critic_lr - 5e-5)
+                    cur_actor_lr = 5e-5 + max(.0, 2e7-num_sampled_timestep)/(2e7) * (init_actor_lr - 5e-5)
+                    cur_critic_lr = 5e-5 + max(.0, 2e7-num_sampled_timestep)/(2e7) * (init_critic_lr - 5e-5)
 
                 for i in range(REPLAY_REPLICA):
                     if not data_outs[i].empty():

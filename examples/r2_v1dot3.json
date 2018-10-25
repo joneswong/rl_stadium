@@ -1,6 +1,6 @@
 {
     "env": "round2",
-    "random_start": 256,
+    "random_start": false,
     "gamma": 0.95,
     "horizon": 334,
     "model": {
@@ -24,7 +24,7 @@
     "param_noise": true,
     "exploration_theta": 0.15,
     "exploration_sigma": 0.2,
-    "target_network_update_freq": 1000,
+    "target_network_update_freq": 2000,
     "tau": 1.0,
     "buffer_size": 5000000,
     "prioritized_replay": true,
