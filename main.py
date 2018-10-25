@@ -89,11 +89,27 @@ def adjust_noise_stddev(distances, cur_stddev):
     return cur_stddev
 
 
+def parse_personal_info(ips):
+    access_id, access_key = None, None
+    for line in ips:
+        line = line.strip()
+        if line and line[0] != '#':
+            kv = line.split('=')
+            if kv[0] == "access_id":
+                access_id = kv[1]
+            if kv[0] == "access_key":
+                access_key = kv[1]
+    return access_id, access_key
+
+
 def main(_):
     # configurations
     with open(FLAGS.config, 'r') as ips:
         specified_configs = json.load(ips)
     AGENT_CONFIG.update(specified_configs)
+    with open("rl_stadium/odps_config.ini", 'r') as ips:
+        access_id, access_key = parse_personal_info(ips)
+        assert access_id is not None and access_key is not None, "no personal information given"
 
     # distributed pai tf
     ps_hosts = get_port(FLAGS.ps_hosts.split(','))
@@ -190,7 +206,7 @@ def main(_):
         # save ckpt to a local folder during the training procedure
         os.system("mkdir tmp")
         destination_folder = "oss://142534/nips18/ckpt_" + time.asctime(time.localtime(time.time())).replace(' ', '_')
-        os.system("osscmd --host=oss-cn-hangzhou-zmf.aliyuncs.com --id=LTAI7wU9Qj3OQo0t --key=JHIACB8W1vu6ZFFF6V6k1ZrqrG4I8k mkdir " + destination_folder)
+        os.system("osscmd --host=oss-cn-hangzhou-zmf.aliyuncs.com --id=" + access_id + " --key=" + access_key + " mkdir " + destination_folder)
     
     # create session
     with tf.train.MonitoredTrainingSession(
@@ -463,7 +479,7 @@ def main(_):
     # upload util the session is closed
     if is_learner:
         print("upload {} files to {}".format(len([name for name in os.listdir("tmp") if os.path.isfile("tmp/"+name)]), destination_folder))
-        os.system("osscmd --host=oss-cn-hangzhou-zmf.aliyuncs.com --id=LTAI7wU9Qj3OQo0t --key=JHIACB8W1vu6ZFFF6V6k1ZrqrG4I8k uploadfromdir tmp " + destination_folder)
+        os.system("osscmd --host=oss-cn-hangzhou-zmf.aliyuncs.com --id=" + access_id + " --key=" + access_key + " uploadfromdir tmp " + destination_folder)
 
     print("done.")
 
