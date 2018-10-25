@@ -107,7 +107,7 @@ def main(_):
     with open(FLAGS.config, 'r') as ips:
         specified_configs = json.load(ips)
     AGENT_CONFIG.update(specified_configs)
-    with open("rl_stadium/odps_config.ini", 'r') as ips:
+    with open("odps_config.ini" if os.path.isfile("odps_config.ini") else "rl_stadium/odps_config.ini" , 'r') as ips:
         access_id, access_key = parse_personal_info(ips)
         assert access_id is not None and access_key is not None, "no personal information given"
 
