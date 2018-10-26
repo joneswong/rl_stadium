@@ -171,13 +171,13 @@ def main(_):
                 obs, rwd, done, _ = env.step(act)
                 episode_rwd += rwd
                 episode_len += 1
-                print("step-{}\t{}".format(episode_len, rwd))
+                print("step-{}\t{}\t{}".format(episode_len, rwd, act))
                 if AGENT_CONFIG["env"] == "round2":
-                    if AGENT_CONFIG.get("use_hcf", False) and obs[21] != prev_target_vx or obs[23] != prev_target_vz:
+                    if AGENT_CONFIG.get("use_hcf", False) and (obs[21] != prev_target_vx or obs[23] != prev_target_vz):
                         prev_target_vx = obs[21]
                         prev_target_vz = obs[23]
                         print(">>>>>>>>>>>>>>>>>>>>>>> Turn to {}\t{} at {} timestep".format(prev_target_vx, prev_target_vz, 3*episode_len))
-                    elif not AGENT_CONFIG.get("use_hcf", False) and obs[0] != prev_target_vx or obs[2] != prev_target_vz:
+                    if (not AGENT_CONFIG.get("use_hcf", False)) and (obs[0] != prev_target_vx or obs[2] != prev_target_vz):
                         prev_target_vx = obs[0]
                         prev_target_vz = obs[2]
                         print(">>>>>>>>>>>>>>>>>>>>>>> Turn to {}\t{} at {} timestep".format(prev_target_vx, prev_target_vz, 3*episode_len))
