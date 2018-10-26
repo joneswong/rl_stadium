@@ -57,7 +57,7 @@ def main(_):
         #env = CustomizedProstheticsEnv(False, difficulty=1, seed=time.time(), random_start=0)
         np.random.seed(int(time.time()))
         env = ProstheticsEnv(False, difficulty=1, seed=time.time())
-        env = wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), clean=True)
+        env = wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), clean=True, use_hcf=AGENT_CONFIG.get("use_hcf", False))
     elif AGENT_CONFIG["env"] == "sr":
         env = GoodStuffEpisodicEnv({
             "input_path": "/gruntdata/app_data/jones.wz/rl/search_ranking/A3gent/search_ranking/episodic_data.tsv",
@@ -148,8 +148,12 @@ def main(_):
             episode_len = 0
             obs = env.reset()
             if AGENT_CONFIG["env"] == "round2":
-                prev_target_vx = obs[0]
-                prev_target_vz = obs[2]
+                if AGENT_CONFIG.get("use_hcf", False):
+                    prev_target_vx = obs[21]
+                    prev_target_vz = obs[23]
+                else:
+                    prev_target_vx = obs[0]
+                    prev_target_vz = obs[2]
             #for var in learner.p_func_vars+learner.a_func_vars+learner.target_p_func_vars+learner.q_func_vars+learner.target_q_func_vars:
             #    print(var.name)
             #    print(var.shape)
@@ -168,10 +172,15 @@ def main(_):
                 episode_rwd += rwd
                 episode_len += 1
                 print("step-{}\t{}".format(episode_len, rwd))
-                if AGENT_CONFIG["env"] == "round2" and obs[0] != prev_target_vx or obs[2] != prev_target_vz:
-                    prev_target_vx = obs[0]
-                    prev_target_vz = obs[2]
-                    print(">>>>>>>>>>>>>>>>>>>>>>> Turn to {}\t{} at {} timestep".format(prev_target_vx, prev_target_vz, 3*episode_len))
+                if AGENT_CONFIG["env"] == "round2":
+                    if AGENT_CONFIG.get("use_hcf", False) and obs[21] != prev_target_vx or obs[23] != prev_target_vz:
+                        prev_target_vx = obs[21]
+                        prev_target_vz = obs[23]
+                        print(">>>>>>>>>>>>>>>>>>>>>>> Turn to {}\t{} at {} timestep".format(prev_target_vx, prev_target_vz, 3*episode_len))
+                    elif not AGENT_CONFIG.get("use_hcf", False) and obs[0] != prev_target_vx or obs[2] != prev_target_vz:
+                        prev_target_vx = obs[0]
+                        prev_target_vz = obs[2]
+                        print(">>>>>>>>>>>>>>>>>>>>>>> Turn to {}\t{} at {} timestep".format(prev_target_vx, prev_target_vz, 3*episode_len))
 
             print("{}\t{}".format(episode_rwd, episode_len))
 

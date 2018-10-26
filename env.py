@@ -752,7 +752,7 @@ class Round2CleanEnv(gym.Wrapper):
         """
         gym.Wrapper.__init__(self, env)
         self._use_hcf = use_hcf
-        self.observation_space.shape = (238 if use_hcf else 223,)
+        self.observation_space.shape = (244 if use_hcf else 223,)
         self._skip = skip
         if use_hcf:
             self.frames = deque([], maxlen=self._skip)
@@ -831,6 +831,9 @@ class Round2CleanEnv(gym.Wrapper):
 
         # moving averaged velocity
         vectors.append(np.mean(list(self.frames), axis=0))
+
+        # pelvis acceleration
+        vectors.append((obs['body_acc']['pelvis'][0] / 100.0, obs['body_acc']['pelvis'][0] / 100.0))
 
         # pelvis orientation as unit vector
         pelvis_pos_x, pelvis_pos_z = obs["body_pos"]["pelvis"][0], obs["body_pos"]["pelvis"][2]
@@ -947,7 +950,7 @@ class Round2CleanEnv(gym.Wrapper):
         return self._relative_dict_to_list(ob)
 
 
-def wrap_round2_opensim(env, skip=3, clean=False):
+def wrap_round2_opensim(env, skip=3, use_hcf=False, clean=False):
     if clean:
-        return Round2CleanEnv(env, skip=skip)
-    return Round2WalkingEnv(env, skip=skip)
+        return Round2CleanEnv(env, skip=skip, use_hcf=use_hcf)
+    return Round2WalkingEnv(env, skip=skip, use_hcf=use_hcf)
