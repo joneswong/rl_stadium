@@ -547,7 +547,7 @@ class Round2WalkingEnv(gym.Wrapper):
         """
         gym.Wrapper.__init__(self, env)
         self._use_hcf = use_hcf
-        self.observation_space.shape = (238 if use_hcf else 223,)
+        self.observation_space.shape = (244 if use_hcf else 223,)
         self._skip = skip
         if use_hcf:
             self.frames = deque([], maxlen=self._skip)
@@ -626,6 +626,9 @@ class Round2WalkingEnv(gym.Wrapper):
 
         # moving averaged velocity
         vectors.append(np.mean(list(self.frames), axis=0))
+
+        # pelvis acceleration
+        vectors.append((obs['body_acc']['pelvis'][0] / 100.0, obs['body_acc']['pelvis'][0] / 100.0))
 
         # pelvis orientation as unit vector
         pelvis_pos_x, pelvis_pos_z = obs["body_pos"]["pelvis"][0], obs["body_pos"]["pelvis"][2]
