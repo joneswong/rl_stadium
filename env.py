@@ -742,15 +742,17 @@ class Round2WalkingEnv(gym.Wrapper):
 
 
 class Round2CleanEnv(gym.Wrapper):
-    def __init__(self, env, skip=3):
+    def __init__(self, env, skip=3, use_hcf=False):
         """
         add 1 to original reward for each timestep except for the terminal one
         repeat an action for 4 timesteps
         """
         gym.Wrapper.__init__(self, env)
-        self.observation_space.shape = (238,)
+        self._use_hcf = use_hcf
+        self.observation_space.shape = (238 if use_hcf else 223,)
         self._skip = skip
-        self.frames = deque([], maxlen=self._skip)
+        if use_hcf:
+            self.frames = deque([], maxlen=self._skip)
 
     def _penalty(self, observation):
         x_head_pelvis = observation['body_pos']['head'][0]-observation['body_pos']['pelvis'][0]
@@ -838,9 +840,6 @@ class Round2CleanEnv(gym.Wrapper):
         # left foot position w.r.t. pelvis position
         vectors.append((0.5*(obs["body_pos"]["calcn_l"][0]+obs["body_pos"]["toes_l"][0])-pelvis_pos_x, 0.5*(obs["body_pos"]["calcn_l"][2]+obs["body_pos"]["toes_l"][2])-pelvis_pos_z))
 
-        print(vectors)
-        input()
-
         features = list()
         for i in range(len(vectors)):
             for j in range(i+1, len(vectors)):
@@ -848,7 +847,10 @@ class Round2CleanEnv(gym.Wrapper):
         return features
         
     def _relative_dict_to_list(self, observation):
-        res = self._engineer_features(observation)
+        if self._use_hcf:
+            res = self._engineer_features(observation)
+        else:
+            res = []
 
         pelvs = {
             'body_pos': observation['body_pos']['pelvis'],
@@ -922,7 +924,8 @@ class Round2CleanEnv(gym.Wrapper):
         done = None
         for i in range(self._skip):
             obs, reward, done, info = self.env.step(ac, False)
-            self.frames.append([obs["body_vel"]["pelvis"][0], obs["body_vel"]["pelvis"][2]])
+            if self._use_hcf:
+                self.frames.append([obs["body_vel"]["pelvis"][0], obs["body_vel"]["pelvis"][2]])
             penalty, strong_done = self._penalty(obs)
             #done = done if done else strong_done
             #total_reward += (reward if done else reward+1.0) - penalty
@@ -933,10 +936,11 @@ class Round2CleanEnv(gym.Wrapper):
         return self._relative_dict_to_list(obs), total_reward, done, info
 
     def reset(self, **kwargs):
-        for _ in range(self._skip -1):
-            self.frames.append(np.zeros(2, dtype="float32"))
         ob = self.env.reset(project=False, **kwargs)
-        self.frames.append([ob["body_vel"]["pelvis"][0], ob["body_vel"]["pelvis"][2]])
+        if self._use_hcf:
+            for _ in range(self._skip -1):
+                self.frames.append(np.zeros(2, dtype="float32"))
+            self.frames.append([ob["body_vel"]["pelvis"][0], ob["body_vel"]["pelvis"][2]])
         return self._relative_dict_to_list(ob)
 
 

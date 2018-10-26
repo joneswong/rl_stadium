@@ -54,7 +54,9 @@ def main(_):
         env = ProstheticsEnv(False, seed=time.time())
         env = wrap_opensim(env, clean=True, repeat=FLAGS.repeat)
     elif AGENT_CONFIG["env"] == "round2":
-        env = CustomizedProstheticsEnv(False, difficulty=1, seed=time.time(), random_start=0)
+        #env = CustomizedProstheticsEnv(False, difficulty=1, seed=time.time(), random_start=0)
+        np.random.seed(int(time.time()))
+        env = ProstheticsEnv(False, difficulty=1, seed=time.time())
         env = wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), clean=True)
     elif AGENT_CONFIG["env"] == "sr":
         env = GoodStuffEpisodicEnv({
@@ -140,15 +142,14 @@ def main(_):
 
         if is_learner:
             print("*************************learner started*************************")
-            #saver.restore(session, "tmp/model.ckpt-21498")
             
             done = False
             episode_rwd = .0
             episode_len = 0
             obs = env.reset()
             if AGENT_CONFIG["env"] == "round2":
-                prev_target_vx = obs[15]
-                prev_target_vz = obs[17]
+                prev_target_vx = obs[0]
+                prev_target_vz = obs[2]
             for var in learner.p_func_vars+learner.a_func_vars+learner.target_p_func_vars+learner.q_func_vars+learner.target_q_func_vars:
                 print(var.name)
                 print(var.shape)
@@ -166,10 +167,10 @@ def main(_):
                 obs, rwd, done, _ = env.step(act)
                 episode_rwd += rwd
                 episode_len += 1
-                print("{}".format(rwd))
-                if AGENT_CONFIG["env"] == "round2" and obs[15] != prev_target_vx or obs[17] != prev_target_vz:
-                    prev_target_vx = obs[15]
-                    prev_target_vz = obs[17]
+                print("step-{}\t{}".format(episode_len, rwd))
+                if AGENT_CONFIG["env"] == "round2" and obs[0] != prev_target_vx or obs[2] != prev_target_vz:
+                    prev_target_vx = obs[0]
+                    prev_target_vz = obs[2]
                     print(">>>>>>>>>>>>>>>>>>>>>>> Turn to {}\t{} at {} timestep".format(prev_target_vx, prev_target_vz, 3*episode_len))
 
             print("{}\t{}".format(episode_rwd, episode_len))

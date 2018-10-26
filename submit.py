@@ -50,7 +50,7 @@ def main(_):
         env = wrap_opensim(env, clean=True)
     elif AGENT_CONFIG["env"] == "round2":
         env = ProstheticsEnv(False, difficulty=1)
-        env = wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), random_start=AGENT_CONFIG.get("random_start", True), clean=True)
+        env = wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), clean=True)
                     
     # create agent (actor and learner)
     is_learner = True
@@ -134,7 +134,7 @@ def main(_):
                 remote_base = "http://grader.crowdai.org:1729"
             elif AGENT_CONFIG["env"] == "round2":
                 remote_base = "http://grader.crowdai.org:1730"
-            crowdai_token = "cf7b1cba79e1d4444bfcc3bb0024a8f7"
+            crowdai_token = "8db9dfc1cf6b44e9e20ce1621ec71ad3"
 
             client = Client(remote_base)
             obs = client.env_create(crowdai_token, env_id='ProstheticsEnv')
