@@ -62,7 +62,7 @@ def get_env(env_name):
         env = CustomizedProstheticsEnv(
             False, difficulty=1, seed=FLAGS.task_index,
             random_start=AGENT_CONFIG.get("random_start", 0))
-        return wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), use_hcf=AGENT_CONFIG.get("use_hcf", False), clean=AGENT_CONFIG.get("clean", False))
+        return wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), use_hcf=AGENT_CONFIG.get("use_hcf", False))
     elif env_name == "sr":
         return GoodStuffEpisodicEnv({
             "input_path": "/gruntdata/app_data/jones.wz/rl/search_ranking/A3gent/search_ranking/episodic_data.tsv",
