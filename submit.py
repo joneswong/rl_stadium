@@ -138,25 +138,29 @@ def main(_):
 
             client = Client(remote_base)
             obs = client.env_create(crowdai_token, env_id='ProstheticsEnv')
-            obs = env._relative_dict_to_list(obs)
+            timestep_feature = .0
+            obs = env._relative_dict_to_list(obs) + [float(timestep_feature)/100.0]
             while True:
                 act = session.run(learner.output_actions, feed_dict={
                     learner.cur_observations: [obs],
                     learner.stochastic: False,
                     learner.eps: .0})[0]
                 [obs, reward, done, info] = client.env_step(act.tolist(), True)
-                obs = env._relative_dict_to_list(obs)
+                timestep_feature += (1.0 / 3.0)
+                obs = env._relative_dict_to_list(obs) + [float(timestep_feature)/100.0]
                 if done:
                     obs = client.env_reset()
                     if not obs:
                         break
-                    obs = env._relative_dict_to_list(obs)
+                    timestep_feature = .0
+                    obs = env._relative_dict_to_list(obs) + [float(timestep_feature)/100.0]
             client.submit()
 
             # repeat actions
             client = Client(remote_base)
             obs = client.env_create(crowdai_token, env_id='ProstheticsEnv')
-            obs = env._relative_dict_to_list(obs)
+            timestep_feature = 0
+            obs = env._relative_dict_to_list(obs) + [float(timestep_feature)/100.0]
             repeat_cnt = 0
             act = None
 
@@ -166,7 +170,8 @@ def main(_):
                         learner.cur_observations: [obs],
                         learner.stochastic: False,
                         learner.eps: .0})[0]
-                [obs, reward, done, info] = client.env_step(act.tolist(), True)
+                timestep_feature += 1
+                [obs, reward, done, info] = client.env_step(act.tolist(), True) + [float(timestep_feature)/100.0]
                 repeat_cnt = (repeat_cnt + 1) % 3
                 obs = env._relative_dict_to_list(obs)
                 if done:
@@ -174,7 +179,8 @@ def main(_):
                     repeat_cnt = 0
                     if not obs:
                         break
-                    obs = env._relative_dict_to_list(obs)
+                    timestep_feature = 0
+                    obs = env._relative_dict_to_list(obs) + [float(timestep_feature)/100.0]
             client.submit()
 
     print("done.")

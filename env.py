@@ -755,10 +755,11 @@ class Round2CleanEnv(gym.Wrapper):
         """
         gym.Wrapper.__init__(self, env)
         self._use_hcf = use_hcf
-        self.observation_space.shape = (244 if use_hcf else 223,)
+        self.observation_space.shape = (245 if use_hcf else 224,)
         self._skip = skip
         if use_hcf:
             self.frames = deque([], maxlen=self._skip)
+        self.timestep_feature = 0
 
     def _penalty(self, observation):
         x_head_pelvis = observation['body_pos']['head'][0]-observation['body_pos']['pelvis'][0]
@@ -941,16 +942,18 @@ class Round2CleanEnv(gym.Wrapper):
             total_reward += reward
             if done:
                 break
+        self.timestep_feature += 1
 
-        return self._relative_dict_to_list(obs), total_reward, done, info
+        return self._relative_dict_to_list(obs)+[float(self.timestep_feature)/100.0], total_reward, done, info
 
     def reset(self, **kwargs):
         ob = self.env.reset(project=False, **kwargs)
+        self.timestep_feature = 0
         if self._use_hcf:
             for _ in range(self._skip -1):
                 self.frames.append(np.zeros(2, dtype="float32"))
             self.frames.append([ob["body_vel"]["pelvis"][0], ob["body_vel"]["pelvis"][2]])
-        return self._relative_dict_to_list(ob)
+        return self._relative_dict_to_list(ob) + [float(self.timestep_feature)/100.0]
 
 
 def wrap_round2_opensim(env, skip=3, use_hcf=False, clean=False):
