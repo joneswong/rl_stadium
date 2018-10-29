@@ -170,9 +170,10 @@ def main(_):
                         learner.cur_observations: [obs],
                         learner.stochastic: False,
                         learner.eps: .0})[0]
-                timestep_feature += 1
                 [obs, reward, done, info] = client.env_step(act.tolist(), True)
                 repeat_cnt = (repeat_cnt + 1) % 3
+                if repeat_cnt == 0:
+                    timestep_feature += 1
                 obs = env._relative_dict_to_list(obs) + [float(timestep_feature)/100.0]
                 if done:
                     obs = client.env_reset()
