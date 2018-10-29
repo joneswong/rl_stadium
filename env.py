@@ -730,7 +730,7 @@ class Round2WalkingEnv(gym.Wrapper):
                 self.frames.append([obs["body_vel"]["pelvis"][0], obs["body_vel"]["pelvis"][2]])
             penalty, strong_done = self._penalty(obs)
             done = done if done else strong_done
-            total_reward += (reward if done else reward+1.0) - penalty
+            total_reward += (reward if done else reward+.5) - penalty
             if done:
                 break
         self.timestep_feature += 1
