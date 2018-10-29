@@ -540,17 +540,15 @@ def wrap_opensim(env, contd=False, clean=False, repeat=3):
 
 
 class Round2WalkingEnv(gym.Wrapper):
-    def __init__(self, env, skip=3, use_hcf=False):
+    def __init__(self, env, skip=3):
         """
         add 1 to original reward for each timestep except for the terminal one
         repeat an action for 4 timesteps
         """
         gym.Wrapper.__init__(self, env)
-        self._use_hcf = use_hcf
-        self.observation_space.shape = (245 if use_hcf else 224,)
+        self.observation_space.shape = (224,)
         self._skip = skip
-        if use_hcf:
-            self.frames = deque([], maxlen=self._skip)
+        self.frames = deque([], maxlen=self._skip)
         self.timestep_feature = 0
 
     def _penalty(self, observation):
@@ -616,6 +614,7 @@ class Round2WalkingEnv(gym.Wrapper):
 
         return pe, done
 
+    """
     def _engineer_features(self, obs):
         vectors = list()
 
@@ -647,12 +646,10 @@ class Round2WalkingEnv(gym.Wrapper):
             for j in range(i+1, len(vectors)):
                 features.append(vectors[i][0]*vectors[j][0]+vectors[i][1]*vectors[j][1])
         return features
+    """
         
     def _relative_dict_to_list(self, observation):
-        if self._use_hcf:
-            res = self._engineer_features(observation)
-        else:
-            res = []
+        res = []
 
         pelvs = {
             'body_pos': observation['body_pos']['pelvis'],
@@ -726,25 +723,25 @@ class Round2WalkingEnv(gym.Wrapper):
         done = None
         for i in range(self._skip):
             obs, reward, done, info = self.env.step(ac, False)
-            if self._use_hcf:
-                self.frames.append([obs["body_vel"]["pelvis"][0], obs["body_vel"]["pelvis"][2]])
             penalty, strong_done = self._penalty(obs)
             done = done if done else strong_done
             total_reward += (reward if done else reward+1.0) - penalty
+
+            self.timestep_feature += 1
+            self.frames.append(self._relative_dict_to_list(obs)+[float(self.timestep_feature)/333.0])
+
             if done:
                 break
-        self.timestep_feature += 1
-
-        return self._relative_dict_to_list(obs)+[float(self.timestep_feature)/100.0], total_reward, done, info
+        
+        return np.mean(list(self._frames), axis=0), total_reward, done, info
 
     def reset(self, **kwargs):
-        ob = self.env.reset(project=False, **kwargs)
         self.timestep_feature = 0
-        if self._use_hcf:
-            for _ in range(self._skip -1):
-                self.frames.append(np.zeros(2, dtype="float32"))
-            self.frames.append([ob["body_vel"]["pelvis"][0], ob["body_vel"]["pelvis"][2]])
-        return self._relative_dict_to_list(ob) + [float(self.timestep_feature)/100.0]
+        ob = self._relative_dict_to_list(self.env.reset(project=False, **kwargs)) + [float(self.timestep_feature)/333.0]
+        for _ in range(self._skip -1):
+            self.frames.append(np.zeros(224, dtype="float32"))
+        self.frames.append(ob)
+        return np.mean(list(self._frames), axis=0)
 
 
 class Round2CleanEnv(gym.Wrapper):
