@@ -453,7 +453,7 @@ def main(_):
                             session.run(subtract_noise_ops)
                             act = session.run(actor.output_actions, feed_dict={
                                 actor.cur_observations: traj_obs[closest_done_idx:],
-                                actor.eps: per_worker_eps, actor.stochastic: use_action_noise})
+                                actor.eps: .0, actor.stochastic: use_action_noise})
                             action_distance.append((traj_len-closest_done_idx, np.mean((act-traj_acts[closest_done_idx:])**2)))
                             session.run(add_noise_ops)
 
