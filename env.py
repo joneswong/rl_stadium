@@ -712,11 +712,7 @@ class Round2WalkingEnv(gym.Wrapper):
             self.frames.append(np.zeros(223, dtype="float32"))
         obs = self._relative_dict_to_list(self.env.reset(project=False, **kwargs))
         self.frames.append(obs)
-        state = obs + np.mean(list(self.frames), axis=0).tolist() + [self.timestep_feature/100.0]
-        print("************************************")
-        print(len(state))
-        print("************************************")
-        return state
+        return obs + np.mean(list(self.frames), axis=0).tolist() + [self.timestep_feature/100.0]
 
 
 class Round2CleanEnv(gym.Wrapper):
