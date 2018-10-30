@@ -733,7 +733,7 @@ class Round2WalkingEnv(gym.Wrapper):
             if done:
                 break
         
-        return np.mean(list(self._frames), axis=0), total_reward, done, info
+        return np.mean(list(self.frames), axis=0), total_reward, done, info
 
     def reset(self, **kwargs):
         self.timestep_feature = 0
@@ -741,7 +741,7 @@ class Round2WalkingEnv(gym.Wrapper):
         for _ in range(self._skip -1):
             self.frames.append(np.zeros(224, dtype="float32"))
         self.frames.append(ob)
-        return np.mean(list(self._frames), axis=0)
+        return np.mean(list(self.frames), axis=0)
 
 
 class Round2CleanEnv(gym.Wrapper):
@@ -953,7 +953,7 @@ class Round2CleanEnv(gym.Wrapper):
         return self._relative_dict_to_list(ob) + [float(self.timestep_feature)/100.0]
 
 
-def wrap_round2_opensim(env, skip=3, use_hcf=False, clean=False):
+def wrap_round2_opensim(env, skip=3, clean=False):
     if clean:
-        return Round2CleanEnv(env, skip=skip, use_hcf=use_hcf)
-    return Round2WalkingEnv(env, skip=skip, use_hcf=use_hcf)
+        return Round2CleanEnv(env, skip=skip)
+    return Round2WalkingEnv(env, skip=skip)
