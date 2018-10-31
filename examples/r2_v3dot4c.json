@@ -43,5 +43,5 @@
     "train_batch_size": 1024,
     "sample_batch_size": 20,
     "max_weight_sync_delay": 40,
-    "stop_criteria": 10400
+    "stop_criteria": 9900
 }
