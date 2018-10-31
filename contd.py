@@ -368,7 +368,7 @@ def main(_):
                 act = session.run(actor.output_actions, feed_dict={
                     actor.cur_observations: [cur_ob], actor.eps: per_worker_eps,
                     actor.stochastic: use_action_noise})[0]
-                next_ob, rwd, done, _ = env.step(act)
+                next_ob, rwd, done, _ = env.step(np.clip(act, .0, 1.0, out=act))
 
                 episode_rwd += rwd
                 episode_len += 1
