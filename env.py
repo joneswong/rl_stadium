@@ -716,13 +716,18 @@ class Round2WalkingEnv(gym.Wrapper):
 
 
 class Round2CleanEnv(gym.Wrapper):
+    
     def __init__(self, env, skip=3):
         """
-        add 1 to original reward for each timestep except for the terminal one
-        repeat an action for 4 timesteps
+        add 0.5 to original reward for each timestep except for the terminal one
+        repeat an action for 'skip' timesteps, and
+        concate the latest frame and an average of the consecutive 'skip' frames
+        as well as the timestep to form the observation consumed by an agent
         """
+        
         gym.Wrapper.__init__(self, env)
-        self.observation_space.shape = (224,)
+        # 223 + 223 + 1 = 447
+        self.observation_space.shape = (447,)
         self._skip = skip
         self.frames = deque([], maxlen=self._skip)
         self.timestep_feature = 0
@@ -790,40 +795,7 @@ class Round2CleanEnv(gym.Wrapper):
 
         return pe, done
 
-    """
-    def _engineer_features(self, obs):
-        vectors = list()
 
-        # target velocity
-        vectors.append((obs["target_vel"][0], obs["target_vel"][2]))
-
-        # current velocity
-        vectors.append((obs["body_vel"]["pelvis"][0], obs["body_vel"]["pelvis"][2]))
-
-        # moving averaged velocity
-        vectors.append(np.mean(list(self.frames), axis=0))
-
-        # pelvis acceleration
-        vectors.append((obs['body_acc']['pelvis'][0] / 100.0, obs['body_acc']['pelvis'][0] / 100.0))
-
-        # pelvis orientation as unit vector
-        pelvis_pos_x, pelvis_pos_z = obs["body_pos"]["pelvis"][0], obs["body_pos"]["pelvis"][2]
-        pelvis_orientation = obs['body_pos_rot']['pelvis'][1]
-        vectors.append((np.cos(pelvis_orientation), -np.sin(pelvis_orientation)))
-        
-        # right foot position w.r.t. pelvis position
-        vectors.append((obs["body_pos"]["pros_foot_r"][0]-pelvis_pos_x, obs["body_pos"]["pros_foot_r"][2]-pelvis_pos_z))
-
-        # left foot position w.r.t. pelvis position
-        vectors.append((0.5*(obs["body_pos"]["calcn_l"][0]+obs["body_pos"]["toes_l"][0])-pelvis_pos_x, 0.5*(obs["body_pos"]["calcn_l"][2]+obs["body_pos"]["toes_l"][2])-pelvis_pos_z))
-
-        features = list()
-        for i in range(len(vectors)):
-            for j in range(i+1, len(vectors)):
-                features.append(vectors[i][0]*vectors[j][0]+vectors[i][1]*vectors[j][1])
-        return features
-    """
-        
     def _relative_dict_to_list(self, observation):
         res = []
 
@@ -901,23 +873,23 @@ class Round2CleanEnv(gym.Wrapper):
             obs, reward, done, info = self.env.step(ac, False)
             penalty, strong_done = self._penalty(obs)
             #done = done if done else strong_done
-            #total_reward += (reward if done else reward+1.0) - penalty
+            #total_reward += (reward if done else reward+.5) - penalty
             total_reward += reward
-            self.timestep_feature += 1
-            self.frames.append(self._relative_dict_to_list(obs)+[float(self.timestep_feature)/333.0])
-
+            obs = self._relative_dict_to_list(obs)
+            self.frames.append(obs)
             if done:
                 break
+        self.timestep_feature += 1
         
-        return np.mean(list(self.frames), axis=0), total_reward, done, info
+        return obs + np.mean(list(self.frames), axis=0).tolist() + [self.timestep_feature/100.0], total_reward, done, info
 
     def reset(self, **kwargs):
         self.timestep_feature = 0
-        ob = self._relative_dict_to_list(self.env.reset(project=False, **kwargs)) + [float(self.timestep_feature)/333.0]
         for _ in range(self._skip -1):
-            self.frames.append(np.zeros(224, dtype="float32"))
-        self.frames.append(ob)
-        return np.mean(list(self.frames), axis=0)
+            self.frames.append(np.zeros(223, dtype="float32"))
+        obs = self._relative_dict_to_list(self.env.reset(project=False, **kwargs))
+        self.frames.append(obs)
+        return obs + np.mean(list(self.frames), axis=0).tolist() + [self.timestep_feature/100.0]
 
 
 def wrap_round2_opensim(env, skip=3, clean=False):
