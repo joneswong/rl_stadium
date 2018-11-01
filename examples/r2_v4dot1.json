@@ -1,9 +1,9 @@
 {
     "env": "round2",
-    "skip": 4,
+    "skip": 3,
     "random_start": 0,
     "gamma": 0.95,
-    "horizon": 250,
+    "horizon": 334,
     "model": {
         "fcnet_hiddens": [512],
         "fcnet_activation": "relu",
@@ -41,7 +41,7 @@
     "grad_norm_clipping": 40.0,
     "learning_starts": 200000,
     "train_batch_size": 1024,
-    "sample_batch_size": 20,
-    "max_weight_sync_delay": 40,
+    "sample_batch_size": 25,
+    "max_weight_sync_delay": 50,
     "stop_criteria": 9900
 }
