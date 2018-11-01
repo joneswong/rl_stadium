@@ -84,8 +84,12 @@ class QNetwork(object):
                  hiddens=[64, 64],
                  activation="relu",
                  layer_normalization=False):
-        q_out = tf.concat([model.last_layer, action_inputs], axis=1)
         activation = tf.nn.__dict__[activation]
+        action_inputs = layers.fully_connected(
+            action_inputs, num_outputs=128, activation_fn=None)
+        action_inputs = layers.layer_norm(
+            action_inputs, activation_fn=activation)
+        q_out = tf.concat([model.last_layer, action_inputs], axis=1)
         for hidden in hiddens:
             if layer_normalization:
                 q_out = layers.fully_connected(
@@ -297,7 +301,7 @@ class DDPGPolicyGraph(object):
     def _build_q_network(self, obs, actions):
         return QNetwork(
             ModelCatalog.get_model(obs, 1, self.config["model"]), 
-            ModelCatalog.get_model(actions, 1, {"fcnet_hiddens": [128], "fcnet_activation": "relu", "fcnet_layer_normalization": True}).last_layer,
+            actions,
             self.config["critic_hiddens"],
             self.config["critic_hidden_activation"],
             self.config["critic_layer_normalization"]).value
