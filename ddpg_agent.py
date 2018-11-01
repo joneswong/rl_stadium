@@ -296,7 +296,8 @@ class DDPGPolicyGraph(object):
 
     def _build_q_network(self, obs, actions):
         return QNetwork(
-            ModelCatalog.get_model(obs, 1, self.config["model"]), actions,
+            ModelCatalog.get_model(obs, 1, self.config["model"]), 
+            ModelCatalog.get_model(actions, 1, {"fcnet_hiddens": [128], "fcnet_activation": "relu", "fcnet_layer_normalization": True}).last_layer,
             self.config["critic_hiddens"],
             self.config["critic_hidden_activation"],
             self.config["critic_layer_normalization"]).value

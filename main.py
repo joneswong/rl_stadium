@@ -339,6 +339,7 @@ def main(_):
             horizon = AGENT_CONFIG["horizon"] or float('inf')
             traj_len = AGENT_CONFIG["sample_batch_size"]
             max_policy_lag = AGENT_CONFIG["max_weight_sync_delay"]
+            begin_actuate_ts = AGENT_CONFIG["learning_starts"] // (2*num_actors)
 
             start_time = time.time()
             session.run(sync_op)
@@ -364,9 +365,12 @@ def main(_):
 
             # begin sampling
             while True:
-                act = session.run(actor.output_actions, feed_dict={
-                    actor.cur_observations: [cur_ob], actor.eps: per_worker_eps,
-                    actor.stochastic: use_action_noise})[0]
+                if timestep_cnt < begin_actuate_ts:
+                    act = env.env.action_space.sample()
+                else:
+                    act = session.run(actor.output_actions, feed_dict={
+                        actor.cur_observations: [cur_ob], actor.eps: per_worker_eps,
+                        actor.stochastic: use_action_noise})[0]
                 next_ob, rwd, done, _ = env.step(np.clip(act, .0, 1.0, out=act))
 
                 episode_rwd += rwd

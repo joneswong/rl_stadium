@@ -63,8 +63,8 @@ class CustomizedProstheticsEnv(ProstheticsEnv):
 
         # Big penalty for not matching the vector on the X,Z projection.
         # No penalty for the vertical axis
-        penalty += 3.0*(state_desc["body_vel"]["pelvis"][0] - state_desc["target_vel"][0])**2
-        penalty += 3.0*(state_desc["body_vel"]["pelvis"][2] - state_desc["target_vel"][2])**2
+        penalty += 4.0*(state_desc["body_vel"]["pelvis"][0] - state_desc["target_vel"][0])**2
+        penalty += 4.0*(state_desc["body_vel"]["pelvis"][2] - state_desc["target_vel"][2])**2
         
         # Reward for not falling
         reward = 10.0
