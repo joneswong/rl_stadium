@@ -619,6 +619,8 @@ class Round2WalkingEnv(gym.Wrapper):
 
         return pe, done
 
+    def _bonus(self, observation):
+        return 0.95 - observation['body_pos']['pelvis'][1]
 
     def _relative_dict_to_list(self, observation):
         res = []
@@ -697,7 +699,7 @@ class Round2WalkingEnv(gym.Wrapper):
             obs, reward, done, info = self.env.step(ac, False)
             penalty, strong_done = self._penalty(obs)
             done = done if done else strong_done
-            total_reward += (reward if done else reward+.5) - penalty
+            total_reward += (reward if done else reward+.5) - penalty + self._bonus(obs)
             obs = self._relative_dict_to_list(obs)
             self.frames.append(obs)
             if done:
