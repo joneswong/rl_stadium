@@ -62,7 +62,10 @@ def get_env(env_name):
         env = CustomizedProstheticsEnv(
             False, difficulty=1, seed=FLAGS.task_index,
             random_start=AGENT_CONFIG.get("random_start", 0))
-        return wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), clean=AGENT_CONFIG.get("clean", False))
+        return wrap_round2_opensim(
+            env, skip=AGENT_CONFIG.get("skip", 3),
+            horizon=AGENT_CONFIG.get("horizon", float('inf')),
+            clean=AGENT_CONFIG.get("clean", False))
     elif env_name == "sr":
         return GoodStuffEpisodicEnv({
             "input_path": "/gruntdata/app_data/jones.wz/rl/search_ranking/A3gent/search_ranking/episodic_data.tsv",
@@ -336,7 +339,6 @@ def main(_):
             time.sleep(0.1*FLAGS.task_index)
             print("*************************actor started*************************")
             # frequently used arguments
-            horizon = AGENT_CONFIG["horizon"] or float('inf')
             traj_len = AGENT_CONFIG["sample_batch_size"]
             max_policy_lag = AGENT_CONFIG["max_weight_sync_delay"]
 
@@ -378,8 +380,6 @@ def main(_):
                 traj_done_masks.append(done)
                 timestep_cnt += 1
 
-                if episode_len >= horizon:
-                    done = True
                 if done:
                     episode_rwds.append(episode_rwd)
                     episode_lens.append(episode_len)

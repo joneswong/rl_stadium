@@ -541,7 +541,7 @@ def wrap_opensim(env, contd=False, clean=False, repeat=3):
 
 class Round2WalkingEnv(gym.Wrapper):
     
-    def __init__(self, env, skip=3):
+    def __init__(self, env, skip=3, horizon=334):
         """
         add 0.5 to original reward for each timestep except for the terminal one
         repeat an action for 'skip' timesteps, and
@@ -553,6 +553,7 @@ class Round2WalkingEnv(gym.Wrapper):
         # 223 + 223 + 1 = 447
         self.observation_space.shape = (447,)
         self._skip = skip
+        self._wrapper_horizon = horizon
         self.frames = deque([], maxlen=self._skip)
         self.timestep_feature = 0
 
@@ -703,6 +704,8 @@ class Round2WalkingEnv(gym.Wrapper):
             if done:
                 break
         self.timestep_feature += 1
+        if self.timestep_feature >= self._wrapper_horizon:
+            done = True
         
         return obs + np.mean(list(self.frames), axis=0).tolist() + [self.timestep_feature/100.0], total_reward, done, info
 
@@ -717,7 +720,7 @@ class Round2WalkingEnv(gym.Wrapper):
 
 class Round2CleanEnv(gym.Wrapper):
     
-    def __init__(self, env, skip=3):
+    def __init__(self, env, skip=3, horizon=334):
         """
         add 0.5 to original reward for each timestep except for the terminal one
         repeat an action for 'skip' timesteps, and
@@ -729,6 +732,7 @@ class Round2CleanEnv(gym.Wrapper):
         # 223 + 223 + 1 = 447
         self.observation_space.shape = (447,)
         self._skip = skip
+        self._wrapper_horizon = horizon
         self.frames = deque([], maxlen=self._skip)
         self.timestep_feature = 0
 
@@ -880,6 +884,8 @@ class Round2CleanEnv(gym.Wrapper):
             if done:
                 break
         self.timestep_feature += 1
+        if self.timestep_feature >= self._wrapper_horizon:
+            done = True
         
         return obs + np.mean(list(self.frames), axis=0).tolist() + [self.timestep_feature/100.0], total_reward, done, info
 
@@ -892,7 +898,7 @@ class Round2CleanEnv(gym.Wrapper):
         return obs + np.mean(list(self.frames), axis=0).tolist() + [self.timestep_feature/100.0]
 
 
-def wrap_round2_opensim(env, skip=3, clean=False):
+def wrap_round2_opensim(env, skip=3, horizon=334, clean=False):
     if clean:
-        return Round2CleanEnv(env, skip=skip)
-    return Round2WalkingEnv(env, skip=skip)
+        return Round2CleanEnv(env, skip=skip, horizon=horizon)
+    return Round2WalkingEnv(env, skip=skip, horiozn=horizon)
