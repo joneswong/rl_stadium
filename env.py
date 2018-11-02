@@ -620,7 +620,7 @@ class Round2WalkingEnv(gym.Wrapper):
         return pe, done
 
     def _bonus(self, observation):
-        return 0.95 - observation['body_pos']['pelvis'][1]
+        return 2 * (0.95 - observation['body_pos']['pelvis'][1])
 
     def _relative_dict_to_list(self, observation):
         res = []
