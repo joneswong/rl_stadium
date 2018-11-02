@@ -901,4 +901,4 @@ class Round2CleanEnv(gym.Wrapper):
 def wrap_round2_opensim(env, skip=3, horizon=334, clean=False):
     if clean:
         return Round2CleanEnv(env, skip=skip, horizon=horizon)
-    return Round2WalkingEnv(env, skip=skip, horiozn=horizon)
+    return Round2WalkingEnv(env, skip=skip, horizon=horizon)
