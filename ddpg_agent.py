@@ -225,17 +225,19 @@ class DDPGPolicyGraph(object):
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
             q_tp1 = self._build_q_network(self.obs_tp1,
                                           output_actions_estimated)
+            # for checking q value
+            self.qtp1_value_tensor = q_tp1
             self.target_q_func_vars = _scope_vars(scope.name)
 
         with tf.device('/gpu'):
             self.loss = self._build_actor_critic_loss(q_t, q_tp1, q_tp0)
             if config["l2_reg"] is not None:
                 for var in self.p_func_vars:
-                    if "bias" not in var.name:
+                    if "bias" not in var.name and "beta" not in var.name:
                         self.loss.actor_loss += (
                             config["l2_reg"] * 0.5 * tf.nn.l2_loss(var))
                 for var in self.q_func_vars:
-                    if "bias" not in var.name:
+                    if "bias" not in var.name and "beta" not in var.name:
                         self.loss.critic_loss += (
                             config["l2_reg"] * 0.5 * tf.nn.l2_loss(var))
             if self.config["grad_norm_clipping"]:

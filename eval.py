@@ -165,9 +165,12 @@ def main(_):
                     learner.cur_observations: [obs],
                     learner.stochastic: False,
                     learner.eps: .0})[0]
-                #q = session.run(learner.q_value_tensor, feed_dict={
+                #q, qtp1 = session.run([learner.q_value_tensor, learner.qtp1_value_tensor], feed_dict={
                 #    learner.obs_t: [obs],
+                #    learner.obs_tp1: [obs],
                 #    learner.act_t: [act]})
+                #print("{}\t{}".format(q, qtp1))
+                #input()
                 obs, rwd, done, _ = env.step(act)
                 episode_rwd += rwd
                 episode_len += 1

@@ -695,6 +695,7 @@ class Round2WalkingEnv(gym.Wrapper):
         done = None
         for i in range(self._skip):
             obs, reward, done, info = self.env.step(ac, False)
+            self.timestep_feature += 1
             penalty, strong_done = self._penalty(obs)
             done = done if done else strong_done
             total_reward += (reward if done else reward+.5) - penalty
@@ -702,9 +703,7 @@ class Round2WalkingEnv(gym.Wrapper):
             self.frames.append(obs)
             if done:
                 break
-        self.timestep_feature += 1
-        
-        return obs + np.mean(list(self.frames), axis=0).tolist() + [self.timestep_feature/100.0], total_reward, done, info
+        return obs + np.mean(list(self.frames), axis=0).tolist() + [self.timestep_feature/333.0], total_reward, done, info
 
     def reset(self, **kwargs):
         self.timestep_feature = 0
@@ -712,7 +711,7 @@ class Round2WalkingEnv(gym.Wrapper):
             self.frames.append(np.zeros(223, dtype="float32"))
         obs = self._relative_dict_to_list(self.env.reset(project=False, **kwargs))
         self.frames.append(obs)
-        return obs + np.mean(list(self.frames), axis=0).tolist() + [self.timestep_feature/100.0]
+        return obs + np.mean(list(self.frames), axis=0).tolist() + [.0]
 
 
 class Round2CleanEnv(gym.Wrapper):
@@ -871,6 +870,7 @@ class Round2CleanEnv(gym.Wrapper):
         done = None
         for i in range(self._skip):
             obs, reward, done, info = self.env.step(ac, False)
+            self.timestep_feature += 1
             penalty, strong_done = self._penalty(obs)
             #done = done if done else strong_done
             #total_reward += (reward if done else reward+.5) - penalty
@@ -879,9 +879,7 @@ class Round2CleanEnv(gym.Wrapper):
             self.frames.append(obs)
             if done:
                 break
-        self.timestep_feature += 1
-        
-        return obs + np.mean(list(self.frames), axis=0).tolist() + [self.timestep_feature/100.0], total_reward, done, info
+        return obs + np.mean(list(self.frames), axis=0).tolist() + [self.timestep_feature/333.0], total_reward, done, info
 
     def reset(self, **kwargs):
         self.timestep_feature = 0
@@ -889,7 +887,7 @@ class Round2CleanEnv(gym.Wrapper):
             self.frames.append(np.zeros(223, dtype="float32"))
         obs = self._relative_dict_to_list(self.env.reset(project=False, **kwargs))
         self.frames.append(obs)
-        return obs + np.mean(list(self.frames), axis=0).tolist() + [self.timestep_feature/100.0]
+        return obs + np.mean(list(self.frames), axis=0).tolist() + [.0]
 
 
 def wrap_round2_opensim(env, skip=3, clean=False):
