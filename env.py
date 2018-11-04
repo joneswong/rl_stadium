@@ -541,7 +541,7 @@ def wrap_opensim(env, contd=False, clean=False, repeat=3):
 
 class Round2WalkingEnv(gym.Wrapper):
     
-    def __init__(self, env, skip=3):
+    def __init__(self, env, skip=3, start_index=0):
         """
         add 0.5 to original reward for each timestep except for the terminal one
         repeat an action for 'skip' timesteps, and
@@ -553,6 +553,7 @@ class Round2WalkingEnv(gym.Wrapper):
         # 223 + 223 + 1 = 447
         self.observation_space.shape = (447,)
         self._skip = skip
+        self._start_index = start_index
         self.frames = deque([], maxlen=self._skip)
         self.timestep_feature = 0
 
@@ -711,12 +712,28 @@ class Round2WalkingEnv(gym.Wrapper):
             self.frames.append(np.zeros(223, dtype="float32"))
         obs = self._relative_dict_to_list(self.env.reset(project=False, **kwargs))
         self.frames.append(obs)
-        return obs + np.mean(list(self.frames), axis=0).tolist() + [.0]
+
+        if self._start_index > 0:
+            start_index = np.random.randini(0, self._start_index)
+            for _ in range(start_index):
+                obs, _, done, _ = self.env.step(self.env.action_space.sample(), False)
+                if done:
+                    self.timestep_feature = 0
+                    for _ in range(self._skip -1):
+                        self.frames.append(np.zeros(223, dtype="float32"))
+                    obs = self._relative_dict_to_list(self.env.reset(project=False, **kwargs))
+                    self.frames.append(obs)
+                    continue
+                self.timestep_feature += 1
+                obs = self._relative_dict_to_list(obs)
+                self.frames.append(obs)
+
+        return obs + np.mean(list(self.frames), axis=0).tolist() + [self.timestep_feature/333.0]
 
 
 class Round2CleanEnv(gym.Wrapper):
     
-    def __init__(self, env, skip=3):
+    def __init__(self, env, skip=3, start_index=0):
         """
         add 0.5 to original reward for each timestep except for the terminal one
         repeat an action for 'skip' timesteps, and
@@ -728,6 +745,7 @@ class Round2CleanEnv(gym.Wrapper):
         # 223 + 223 + 1 = 447
         self.observation_space.shape = (447,)
         self._skip = skip
+        self._start_index = start_index
         self.frames = deque([], maxlen=self._skip)
         self.timestep_feature = 0
 
@@ -887,10 +905,26 @@ class Round2CleanEnv(gym.Wrapper):
             self.frames.append(np.zeros(223, dtype="float32"))
         obs = self._relative_dict_to_list(self.env.reset(project=False, **kwargs))
         self.frames.append(obs)
-        return obs + np.mean(list(self.frames), axis=0).tolist() + [.0]
+
+        if self._start_index > 0:
+            start_index = np.random.randini(0, self._start_index)
+            for _ in range(start_index):
+                obs, _, done, _ = self.env.step(self.env.action_space.sample(), False)
+                if done:
+                    self.timestep_feature = 0
+                    for _ in range(self._skip -1):
+                        self.frames.append(np.zeros(223, dtype="float32"))
+                    obs = self._relative_dict_to_list(self.env.reset(project=False, **kwargs))
+                    self.frames.append(obs)
+                    continue
+                self.timestep_feature += 1
+                obs = self._relative_dict_to_list(obs)
+                self.frames.append(obs)
+
+        return obs + np.mean(list(self.frames), axis=0).tolist() + [self.timestep_feature/333.0]
 
 
-def wrap_round2_opensim(env, skip=3, clean=False):
+def wrap_round2_opensim(env, skip=3, start_index=0, clean=False):
     if clean:
-        return Round2CleanEnv(env, skip=skip)
-    return Round2WalkingEnv(env, skip=skip)
+        return Round2CleanEnv(env, skip=skip, start_index=start_index)
+    return Round2WalkingEnv(env, skip=skip, start_index=start_index)
