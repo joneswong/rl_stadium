@@ -59,7 +59,7 @@ def main(_):
         else:
             seed = int(time.time())
         np.random.seed(seed)
-        env = ProstheticsEnv(False, difficulty=1, seed=seed-3)
+        env = ProstheticsEnv(False, difficulty=1, seed=seed+997)
         env = wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), start_index=AGENT_CONFIG.get("start_index", 0), clean=True)
     elif AGENT_CONFIG["env"] == "sr":
         env = GoodStuffEpisodicEnv({

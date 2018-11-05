@@ -62,7 +62,7 @@ def get_env(env_name):
         env = CustomizedProstheticsEnv(
             False, difficulty=1, seed=FLAGS.task_index,
             random_start=AGENT_CONFIG.get("random_start", 0))
-        return wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), clean=AGENT_CONFIG.get("clean", False))
+        return wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), start_index=AGENT_CONFIG.get("start_index", 0), clean=AGENT_CONFIG.get("clean", False))
     elif env_name == "sr":
         return GoodStuffEpisodicEnv({
             "input_path": "/gruntdata/app_data/jones.wz/rl/search_ranking/A3gent/search_ranking/episodic_data.tsv",
@@ -454,7 +454,7 @@ def main(_):
                             session.run(subtract_noise_ops)
                             act = session.run(actor.output_actions, feed_dict={
                                 actor.cur_observations: traj_obs[closest_done_idx:],
-                                actor.eps: per_worker_eps, actor.stochastic: use_action_noise})
+                                actor.eps: .0, actor.stochastic: use_action_noise})
                             action_distance.append((traj_len-closest_done_idx, np.mean((act-traj_acts[closest_done_idx:])**2)))
                             session.run(add_noise_ops)
 

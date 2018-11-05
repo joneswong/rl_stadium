@@ -1,0 +1,10 @@
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/contd_r2_v4dot1b.json" --checkpointDir tune_v4dot1b/ --seed 0 > tune_v4dot1b_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/contd_r2_v4dot1b.json" --checkpointDir tune_v4dot1b/ --seed 10 >> tune_v4dot1b_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/contd_r2_v4dot1b.json" --checkpointDir tune_v4dot1b/ --seed 200 >> tune_v4dot1b_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/contd_r2_v4dot1b.json" --checkpointDir tune_v4dot1b/ --seed 3000 >> tune_v4dot1b_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/contd_r2_v4dot1b.json" --checkpointDir tune_v4dot1b/ --seed 40000 >> tune_v4dot1b_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/contd_r2_v4dot1b.json" --checkpointDir tune_v4dot1b/ --seed 500000 >> tune_v4dot1b_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/contd_r2_v4dot1b.json" --checkpointDir tune_v4dot1b/ --seed 60000 >> tune_v4dot1b_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/contd_r2_v4dot1b.json" --checkpointDir tune_v4dot1b/ --seed 7000 >> tune_v4dot1b_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/contd_r2_v4dot1b.json" --checkpointDir tune_v4dot1b/ --seed 800 >> tune_v4dot1b_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/contd_r2_v4dot1b.json" --checkpointDir tune_v4dot1b/ --seed 90 >> tune_v4dot1b_perf.txt

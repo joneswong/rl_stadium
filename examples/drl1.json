@@ -1,7 +1,7 @@
 {
     "env": "round2",
     "skip": 3,
-    "random_start": 512,
+    "random_start": 64,
     "gamma": 0.95,
     "horizon": 334,
     "model": {
@@ -39,7 +39,7 @@
     "huber_threshold": 1.0,
     "l2_reg": 1e-6,
     "grad_norm_clipping": 40.0,
-    "learning_starts": 200000,
+    "learning_starts": 1000000,
     "train_batch_size": 1024,
     "sample_batch_size": 25,
     "max_weight_sync_delay": 50,
