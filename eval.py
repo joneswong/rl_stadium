@@ -60,7 +60,7 @@ def main(_):
             seed = int(time.time())
         np.random.seed(seed)
         env = ProstheticsEnv(False, difficulty=1, seed=seed+997)
-        env = wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), start_index=AGENT_CONFIG.get("start_index", 0), clean=True)
+        env = wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), start_index=0, clean=True)
     elif AGENT_CONFIG["env"] == "sr":
         env = GoodStuffEpisodicEnv({
             "input_path": "/gruntdata/app_data/jones.wz/rl/search_ranking/A3gent/search_ranking/episodic_data.tsv",
