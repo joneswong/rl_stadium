@@ -542,7 +542,7 @@ def wrap_opensim(env, contd=False, clean=False, repeat=3):
 
 class Round2WalkingEnv(gym.Wrapper):
     
-    def __init__(self, env, skip=3, start_index=0):
+    def __init__(self, env, skip=3, start_index=0, penalty_coeff=1.0):
         """
         add 0.5 to original reward for each timestep except for the terminal one
         repeat an action for 'skip' timesteps, and
@@ -555,6 +555,7 @@ class Round2WalkingEnv(gym.Wrapper):
         self.observation_space.shape = (447,)
         self._skip = skip
         self._start_index = start_index
+        self._penalty_coeff = penalty_coeff
         self.frames = deque([], maxlen=self._skip)
         self.timestep_feature = 0
 
@@ -700,7 +701,7 @@ class Round2WalkingEnv(gym.Wrapper):
             self.timestep_feature += 1
             penalty, strong_done = self._penalty(obs)
             done = done if done else strong_done
-            total_reward += (reward if done else reward+.5) - penalty
+            total_reward += (reward if done else reward+.5) - self._penalty_coeff*penalty
             obs = self._relative_dict_to_list(obs)
             self.frames.append(obs)
             if done:
@@ -734,7 +735,7 @@ class Round2WalkingEnv(gym.Wrapper):
 
 class Round2CleanEnv(gym.Wrapper):
     
-    def __init__(self, env, skip=3, start_index=0):
+    def __init__(self, env, skip=3, start_index=0, penalty_coeff=1.0):
         """
         add 0.5 to original reward for each timestep except for the terminal one
         repeat an action for 'skip' timesteps, and
@@ -747,6 +748,7 @@ class Round2CleanEnv(gym.Wrapper):
         self.observation_space.shape = (447,)
         self._skip = skip
         self._start_index = start_index
+        self._penalty_coeff = penalty_coeff
         self.frames = deque([], maxlen=self._skip)
         self.timestep_feature = 0
 
@@ -925,7 +927,7 @@ class Round2CleanEnv(gym.Wrapper):
         return obs + np.mean(list(self.frames), axis=0).tolist() + [self.timestep_feature/333.0]
 
 
-def wrap_round2_opensim(env, skip=3, start_index=0, clean=False):
+def wrap_round2_opensim(env, skip=3, start_index=0, penalty_coeff=1.0, clean=False):
     if clean:
-        return Round2CleanEnv(env, skip=skip, start_index=start_index)
-    return Round2WalkingEnv(env, skip=skip, start_index=start_index)
+        return Round2CleanEnv(env, skip=skip, start_index=start_index, penalty_coeff=penalty_coeff)
+    return Round2WalkingEnv(env, skip=skip, start_index=start_index, penalty_coeff=penalty_coeff)

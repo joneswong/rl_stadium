@@ -63,7 +63,12 @@ def get_env(env_name):
             False, difficulty=1, seed=FLAGS.task_index,
             random_start=AGENT_CONFIG.get("random_start", 0),
             vre_coeff=AGENT_CONFIG.get("vre_coeff", 3.0))
-        return wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), start_index=AGENT_CONFIG.get("start_index", 0), clean=AGENT_CONFIG.get("clean", False))
+        return wrap_round2_opensim(
+            env,
+            skip=AGENT_CONFIG.get("skip", 3),
+            start_index=AGENT_CONFIG.get("start_index", 0),
+            penalty_coeff=AGENT_CONFIG.get("penalty_coeff", 1.0),
+            clean=AGENT_CONFIG.get("clean", False))
     elif env_name == "sr":
         return GoodStuffEpisodicEnv({
             "input_path": "/gruntdata/app_data/jones.wz/rl/search_ranking/A3gent/search_ranking/episodic_data.tsv",
