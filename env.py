@@ -558,6 +558,7 @@ class Round2WalkingEnv(gym.Wrapper):
         self._penalty_coeff = penalty_coeff
         self.frames = deque([], maxlen=self._skip)
         self.timestep_feature = 0
+        self._max_velx = .0
 
     def _penalty(self, observation):
         x_head_pelvis = observation['body_pos']['head'][0]-observation['body_pos']['pelvis'][0]
@@ -617,6 +618,18 @@ class Round2WalkingEnv(gym.Wrapper):
 
         # do NOT jump
         pe += 10 * max(.0, min(observation['body_pos']['pros_foot_r'][1], observation['body_pos']['calcn_l'][1], observation['body_pos']['toes_l'][1]))
+
+        # do NOT hesitate
+        if max(observation["body_pos"]["calcn_l"][0], observation["body_pos"]["pros_foot_r"][0]) < .0:
+            pe += .5
+
+        # do NOT slow down
+        if self.timestep_feature <= 30 and 2.0*observation["body_vel"]["pelvis"][0] < self._max_velx:
+            pe += 10
+
+        # do NOT start slowly
+        if self._max_velx < 1.24:
+            pe += .5
         
         done = observation['body_pos']['pelvis'][1] <= 0.65
 
@@ -699,6 +712,7 @@ class Round2WalkingEnv(gym.Wrapper):
         for i in range(self._skip):
             obs, reward, done, info = self.env.step(ac, False)
             self.timestep_feature += 1
+            self._max_velx = max(self._max_velx, obs["body_vel"]["pelvis"][0])
             penalty, strong_done = self._penalty(obs)
             done = done if done else strong_done
             total_reward += (reward if done else reward+.5) - self._penalty_coeff*penalty
@@ -710,6 +724,7 @@ class Round2WalkingEnv(gym.Wrapper):
 
     def reset(self, **kwargs):
         self.timestep_feature = 0
+        self._max_velx = .0
         for _ in range(self._skip -1):
             self.frames.append(np.zeros(223, dtype="float32"))
         obs = self._relative_dict_to_list(self.env.reset(project=False, **kwargs))
@@ -719,8 +734,10 @@ class Round2WalkingEnv(gym.Wrapper):
             start_index = np.random.randint(0, self._start_index)
             for _ in range(start_index):
                 obs, _, done, _ = self.env.step(self.env.action_space.sample(), False)
+                self._max_velx = max(self._max_velx, obs["body_vel"]["pelvis"][0])
                 if done:
                     self.timestep_feature = 0
+                    self._max_velx = .0
                     for _ in range(self._skip -1):
                         self.frames.append(np.zeros(223, dtype="float32"))
                     obs = self._relative_dict_to_list(self.env.reset(project=False, **kwargs))
