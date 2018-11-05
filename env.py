@@ -15,9 +15,10 @@ from osim.env import ProstheticsEnv, rect
 
 
 class CustomizedProstheticsEnv(ProstheticsEnv):
-    def __init__(self, visualize=True, integrator_accuracy=5e-5, difficulty=0, seed=0, random_start=0):
+    def __init__(self, visualize=True, integrator_accuracy=5e-5, difficulty=0, seed=0, random_start=0, vre_coeff=3.0):
         super(CustomizedProstheticsEnv, self).__init__(visualize=visualize, integrator_accuracy=integrator_accuracy, difficulty=difficulty, seed=seed)
         self._random_start = random_start
+        self._vre_coeff = vre_coeff
         np.random.seed(int(seed))
 
     def generate_new_targets(self, poisson_lambda = 300):
@@ -63,8 +64,8 @@ class CustomizedProstheticsEnv(ProstheticsEnv):
 
         # Big penalty for not matching the vector on the X,Z projection.
         # No penalty for the vertical axis
-        penalty += 3.0*(state_desc["body_vel"]["pelvis"][0] - state_desc["target_vel"][0])**2
-        penalty += 3.0*(state_desc["body_vel"]["pelvis"][2] - state_desc["target_vel"][2])**2
+        penalty += self._vre_coeff * (state_desc["body_vel"]["pelvis"][0] - state_desc["target_vel"][0])**2
+        penalty += self._vre_coeff * (state_desc["body_vel"]["pelvis"][2] - state_desc["target_vel"][2])**2
         
         # Reward for not falling
         reward = 10.0

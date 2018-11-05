@@ -2,6 +2,7 @@
     "env": "round2",
     "skip": 3,
     "random_start": 64,
+    "vre_coeff": 4.0,
     "gamma": 0.95,
     "horizon": 334,
     "model": {
