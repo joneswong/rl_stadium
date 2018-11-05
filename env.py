@@ -714,7 +714,7 @@ class Round2WalkingEnv(gym.Wrapper):
         self.frames.append(obs)
 
         if self._start_index > 0:
-            start_index = np.random.randini(0, self._start_index)
+            start_index = np.random.randint(0, self._start_index)
             for _ in range(start_index):
                 obs, _, done, _ = self.env.step(self.env.action_space.sample(), False)
                 if done:
@@ -907,7 +907,7 @@ class Round2CleanEnv(gym.Wrapper):
         self.frames.append(obs)
 
         if self._start_index > 0:
-            start_index = np.random.randini(0, self._start_index)
+            start_index = np.random.randint(0, self._start_index)
             for _ in range(start_index):
                 obs, _, done, _ = self.env.step(self.env.action_space.sample(), False)
                 if done:
