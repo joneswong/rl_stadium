@@ -363,7 +363,7 @@ def main(_):
             # TO DO: specify the ratio (now 1:0 or 1:1)
             use_action_noise = True
             use_param_noise = AGENT_CONFIG.get("param_noise", False)
-            cur_param_noise_stddev = .1
+            cur_param_noise_stddev = .02
             action_distance = list()
 
             last_sync_ts, timestep_cnt, traj_cnt = 0, 0, 0
