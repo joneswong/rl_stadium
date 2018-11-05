@@ -1,0 +1,10 @@
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/drl1.json" --checkpointDir drl1/ -seed 0 > drl1_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/drl1.json" --checkpointDir drl1/ -seed 10 >> drl1_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/drl1.json" --checkpointDir drl1/ -seed 200 >> drl1_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/drl1.json" --checkpointDir drl1/ -seed 3000 >> drl1_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/drl1.json" --checkpointDir drl1/ -seed 40000 >> drl1_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/drl1.json" --checkpointDir drl1/ -seed 500000 >> drl1_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/drl1.json" --checkpointDir drl1/ -seed 6000000 >> drl1_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/drl1.json" --checkpointDir drl1/ -seed 70000000 >> drl1_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/drl1.json" --checkpointDir drl1/ -seed 800000000 >> drl1_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/drl1.json" --checkpointDir drl1/ -seed -9 >> drl1_perf.txt
