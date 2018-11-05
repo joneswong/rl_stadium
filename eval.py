@@ -24,7 +24,7 @@ FLAGS = tf.flags.FLAGS
 tf.flags.DEFINE_string("checkpointDir", "ckpt", "oss buckets for saving checkpoint")
 # user defined
 tf.flags.DEFINE_string("config", "", "path of config file")
-tf.flags.DEFINE_integer("repeat", 3, "number of action repeats")
+tf.flags.DEFINE_integer("seed", None, "seed for np.random and random")
 
 
 SAMPLE_QUEUE_DEPTH = 2
@@ -54,9 +54,12 @@ def main(_):
         env = ProstheticsEnv(False, seed=time.time())
         env = wrap_opensim(env, clean=True, repeat=FLAGS.repeat)
     elif AGENT_CONFIG["env"] == "round2":
-        #env = CustomizedProstheticsEnv(False, difficulty=1, seed=time.time(), random_start=0)
-        np.random.seed(int(time.time()))
-        env = ProstheticsEnv(False, difficulty=1, seed=int(time.time()))
+        if FLAGS.seed is not None:
+            seed = FLAGS.seed
+        else:
+            seed = int(time.time())
+        np.random.seed(seed)
+        env = ProstheticsEnv(False, difficulty=1, seed=seed-3)
         env = wrap_round2_opensim(env, skip=AGENT_CONFIG.get("skip", 3), start_index=AGENT_CONFIG.get("start_index", 0), clean=True)
     elif AGENT_CONFIG["env"] == "sr":
         env = GoodStuffEpisodicEnv({

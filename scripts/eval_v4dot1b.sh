@@ -1,0 +1,10 @@
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/r2_v4dot1b.json" --checkpointDir v4dot1b/ -seed 0 > v4dot1b_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/r2_v4dot1b.json" --checkpointDir v4dot1b/ -seed 10 >> v4dot1b_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/r2_v4dot1b.json" --checkpointDir v4dot1b/ -seed 200 >> v4dot1b_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/r2_v4dot1b.json" --checkpointDir v4dot1b/ -seed 3000 >> v4dot1b_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/r2_v4dot1b.json" --checkpointDir v4dot1b/ -seed 40000 >> v4dot1b_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/r2_v4dot1b.json" --checkpointDir v4dot1b/ -seed 500000 >> v4dot1b_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/r2_v4dot1b.json" --checkpointDir v4dot1b/ -seed 6000000 >> v4dot1b_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/r2_v4dot1b.json" --checkpointDir v4dot1b/ -seed 70000000 >> v4dot1b_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/r2_v4dot1b.json" --checkpointDir v4dot1b/ -seed 800000000 >> v4dot1b_perf.txt
+CUDA_VISIBLE_DEVICES="0" python eval.py --config="examples/r2_v4dot1b.json" --checkpointDir v4dot1b/ -seed -9 >> v4dot1b_perf.txt
