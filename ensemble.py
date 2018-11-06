@@ -91,7 +91,7 @@ def main():
         wrapper = wrap_round2_opensim(
             env,
             skip=agent_config.get("skip", 3),
-            start_index=agent_config.get("start_index", 0),
+            start_index=0,
             clean=True)
         wrappers.append(wrapper)
 
