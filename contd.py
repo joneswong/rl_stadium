@@ -60,7 +60,7 @@ def get_env(env_name):
         return wrap_opensim(env)
     elif env_name == "round2":
         env = CustomizedProstheticsEnv(
-            False, difficulty=1, seed=FLAGS.task_index,
+            False, difficulty=1, seed=FLAGS.task_index+997,
             random_start=AGENT_CONFIG.get("random_start", 0),
             vre_coeff=AGENT_CONFIG.get("vre_coeff", 3.0))
         return wrap_round2_opensim(
@@ -346,7 +346,7 @@ def main(_):
             horizon = AGENT_CONFIG["horizon"] or float('inf')
             traj_len = AGENT_CONFIG["sample_batch_size"]
             max_policy_lag = AGENT_CONFIG["max_weight_sync_delay"]
-            upsample = AGENT_CONFIG["upsample"].get("upsample", False)
+            upsample = AGENT_CONFIG.get("upsample", False)
 
             start_time = time.time()
             session.run(sync_op)
@@ -458,7 +458,7 @@ def main(_):
                                 exist_turn_lor = True
                                 break
                         if exist_turn_lor:
-                            session.run(enqueue_ops[REPLAY_REPLICA-(FLAGS.task_index%REPLAY_REPLICA)], feed_dict={
+                            session.run(enqueue_ops[REPLAY_REPLICA-1-(FLAGS.task_index%REPLAY_REPLICA)], feed_dict={
                                 states: traj_obs, actions: traj_acts,
                                 next_states: traj_next_obs,
                                 rewards: traj_rwds, terminals: traj_done_masks})
