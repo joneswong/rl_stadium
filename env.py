@@ -619,22 +619,35 @@ class Round2WalkingEnv(gym.Wrapper):
         # do NOT jump
         pe += 10 * max(.0, min(observation['body_pos']['pros_foot_r'][1], observation['body_pos']['calcn_l'][1], observation['body_pos']['toes_l'][1]))
 
+        # quick start
         # do NOT hesitate
         if max(observation["body_pos"]["calcn_l"][0], observation["body_pos"]["pros_foot_r"][0]) < .0:
-            pe += .5
-
+            pe += 1.5
         # do NOT slow down
         if self.timestep_feature <= 30 and 2.0*observation["body_vel"]["pelvis"][0] < self._max_velx:
             pe += 10
-
         # do NOT start slowly
         if self._max_velx < 1.24:
-            pe += .5
+            pe += 1.5
+        # do NOT lock joints
+        if max(observation["joint_pos"]["knee_l"], observation["joint_pos"]["knee_l"]) > 0.15:
+            pe += 1.5
         
         done = observation['body_pos']['pelvis'][1] <= 0.65
 
         return pe, done
 
+    def _bonus(self, observation):
+        bo = .0
+        
+        # encourage low gc
+        if self.timestep_feature <= 9:
+            bo += 3 * max(.0, 0.94 - observation["body_pos"]["pelvis"][1])
+        # encourage bend knees
+        if self.timestep_feature <= 9:
+            bo += 5 * min(0.524, max(max(.0, -observation["joint_pos"]["knee_l"]), -observation["joint_pos"]["knee_r"]))
+
+        return bo
 
     def _relative_dict_to_list(self, observation):
         res = []
@@ -714,8 +727,9 @@ class Round2WalkingEnv(gym.Wrapper):
             self.timestep_feature += 1
             self._max_velx = max(self._max_velx, obs["body_vel"]["pelvis"][0])
             penalty, strong_done = self._penalty(obs)
+            bonus = self._bonus(obs)
             done = done if done else strong_done
-            total_reward += (reward if done else reward+.5) - self._penalty_coeff*penalty
+            total_reward += (reward if done else reward+.5) - self._penalty_coeff*(penalty-bonus)
             obs = self._relative_dict_to_list(obs)
             self.frames.append(obs)
             if done:
