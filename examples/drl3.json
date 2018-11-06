@@ -21,7 +21,7 @@
     "timesteps_per_iteration": 1000,
     "exploration_fraction": 0.1,
     "exploration_final_eps": 0.02,
-    "lr_decay": true,
+    "lr_decay": false,
     "noise_scale": 2.5,
     "param_noise": true,
     "exploration_theta": 0.15,
