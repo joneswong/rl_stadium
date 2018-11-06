@@ -630,7 +630,7 @@ class Round2WalkingEnv(gym.Wrapper):
         if self._max_velx < 1.24:
             pe += 1.5
         # do NOT lock joints
-        if max(observation["joint_pos"]["knee_l"], observation["joint_pos"]["knee_l"]) > 0.15:
+        if max(observation["joint_pos"]["knee_l"][0], observation["joint_pos"]["knee_l"][0]) > 0.15:
             pe += 1.5
         
         done = observation['body_pos']['pelvis'][1] <= 0.65
@@ -645,7 +645,7 @@ class Round2WalkingEnv(gym.Wrapper):
             bo += 3 * max(.0, 0.94 - observation["body_pos"]["pelvis"][1])
         # encourage bend knees
         if self.timestep_feature <= 9:
-            bo += 5 * min(0.524, max(max(.0, -observation["joint_pos"]["knee_l"]), -observation["joint_pos"]["knee_r"]))
+            bo += 5 * min(0.524, max(max(.0, -observation["joint_pos"]["knee_l"][0]), -observation["joint_pos"]["knee_r"][0]))
 
         return bo
 
