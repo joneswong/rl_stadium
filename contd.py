@@ -346,6 +346,7 @@ def main(_):
             horizon = AGENT_CONFIG["horizon"] or float('inf')
             traj_len = AGENT_CONFIG["sample_batch_size"]
             max_policy_lag = AGENT_CONFIG["max_weight_sync_delay"]
+            upsample = AGENT_CONFIG["upsample"].get("upsample", False)
 
             start_time = time.time()
             session.run(sync_op)
@@ -363,7 +364,7 @@ def main(_):
             # TO DO: specify the ratio (now 1:0 or 1:1)
             use_action_noise = True
             use_param_noise = AGENT_CONFIG.get("param_noise", False)
-            cur_param_noise_stddev = .015
+            cur_param_noise_stddev = .01
             action_distance = list()
 
             last_sync_ts, timestep_cnt, traj_cnt = 0, 0, 0
@@ -450,6 +451,17 @@ def main(_):
                         states: traj_obs, actions: traj_acts,
                         next_states: traj_next_obs,
                         rewards: traj_rwds, terminals: traj_done_masks})
+                    if upsample:
+                        exist_turn_lor = False
+                        for j in range(1,len(traj_obs)):
+                            if np.abs(traj_obs[j][0] - traj_obs[j-1][0]) > 0.1 or np.abs(traj_obs[j][2] - traj_obs[j-1][2]) > 0.02:
+                                exist_turn_lor = True
+                                break
+                        if exist_turn_lor:
+                            session.run(enqueue_ops[REPLAY_REPLICA-(FLAGS.task_index%REPLAY_REPLICA)], feed_dict={
+                                states: traj_obs, actions: traj_acts,
+                                next_states: traj_next_obs,
+                                rewards: traj_rwds, terminals: traj_done_masks})
                     enqueue_consumed += (time.time() - enqueue_start_mnt)
 
                     # calculate action distances
